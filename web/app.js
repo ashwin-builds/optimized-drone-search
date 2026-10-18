@@ -873,8 +873,8 @@ function renderBenchCharts() {
   const algos = [...new Set(rows.map((s) => s.algo))];
   const names = state.options.algorithms;
   for (const [id, metric, label, scale] of [
-    ["chart-bench-completion", "completion", `${pct()} of expected people served (hours)`, 60],
-    ["chart-bench-wait", "mean_wait", "Mean wait (minutes)", 1],
+    ["chart-bench-completion", "completion", "Hours", 60],
+    ["chart-bench-wait", "mean_wait", "Minutes", 1],
   ]) {
     state.charts[id]?.destroy();
     const opts = baseChartOptions(label, "Drones");
