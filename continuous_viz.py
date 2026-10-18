@@ -20,6 +20,7 @@ from dataclasses import dataclass
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
+from matplotlib.collections import LineCollection
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.lines import Line2D
 
@@ -28,6 +29,7 @@ from scenario import DEPOT_DISTANCE_KM, Scenario
 from visualize import (EMPTY, HIDDEN, LOADED, SUPPLIED, WAITING, person_offsets, show_or_save,
                        spread)
 
+ASSIGNED = "#9467bd"    # found, a drone is flying to them
 CELL_CMAP = LinearSegmentedColormap.from_list("search", ["#d0d0d0", "#fbfbf6"])
 
 
@@ -37,7 +39,9 @@ class CSnapshot:
     cells: np.ndarray            # [y, x] 0 unsearched .. 1 searched
     found: np.ndarray
     supplied: np.ndarray
+    assigned: np.ndarray         # a drone is flying to them
     drones: list[tuple]          # (pos, status, has_supplies, progress, id)
+    flights: list[tuple]         # (drone xy, person xy) for delivery flights
     decision: Decision | None
     n_unfound: int
     n_waiting: int
@@ -51,22 +55,33 @@ def snapshot(model: ContinuousModel, t: float) -> CSnapshot:
     cells = np.zeros((k, k))
     for x, y in model.searched:
         cells[y, x] = 1.0
-    drones = []
+    drones, flights = [], []
+    assigned = np.zeros(len(model.people), dtype=bool)
     for d in model.drones:
-        if d.status == "search":
+        pos = d.pos
+        if d.status == "deliver":
+            span = d.until - d.started
+            frac = min(1.0, (t - d.started) / span) if span > 0 else 1.0
+            (x0, y0), (x1, y1) = d.origin, d.target.cell
+            pos = (x0 + frac * (x1 - x0), y0 + frac * (y1 - y0))
+            assigned[d.target.id] = True
+            flights.append((pos, d.target.id))
+        elif d.status == "search":
             frac = min(1.0, (t - d.started) / model.tau)
             cells[d.cell[1], d.cell[0]] = frac
         elif d.status == "return":
             frac = min(1.0, (t - d.started) / model.T)
         else:
             frac = 0.0
-        drones.append((d.pos, d.status, d.has_supplies, frac, d.id))
+        drones.append((pos, d.status, d.has_supplies, frac, d.id))
     return CSnapshot(
         time=t,
         cells=cells,
         found=np.array([p.found_step is not None for p in model.people], dtype=bool),
         supplied=np.array([p.supplied_step is not None for p in model.people], dtype=bool),
+        assigned=assigned,
         drones=drones,
+        flights=flights,
         decision=model.decisions[-1] if model.decisions else None,
         n_unfound=model.n_unfound,
         n_waiting=len(model.waiting),
@@ -104,6 +119,7 @@ def info_text(snap: CSnapshot, model: ContinuousModel, sc: Scenario) -> str:
         f"people found      {p - snap.n_unfound} / {p}",
         f"people supplied   {snap.n_supplied} / {p}",
         f"waiting           {snap.n_waiting}",
+        f"drone en route    {int(snap.assigned.sum())}",
         f"cells searched    {snap.cells_searched} / {model.k ** 2}",
         "",
     ]
@@ -139,7 +155,10 @@ LEGEND = [
     Line2D([], [], marker="o", ls="", mfc="none", mec=EMPTY, mew=2, ms=9, label="idle, empty"),
     Line2D([], [], marker=">", ls="", color=EMPTY, mec="black", ms=9, label="to depot (empty)"),
     Line2D([], [], marker="<", ls="", color=LOADED, mec="black", ms=9, label="from depot (loaded)"),
+    Line2D([], [], marker="D", ls="--", color=LOADED, mec="black", ms=7, lw=1,
+           label="flying to serve"),
     Line2D([], [], marker="X", ls="", color=WAITING, ms=8, label="found, needs supplies"),
+    Line2D([], [], marker="X", ls="", color=ASSIGNED, ms=8, label="found, drone en route"),
     Line2D([], [], marker="P", ls="", color=SUPPLIED, ms=8, label="found, supplied"),
     Line2D([], [], marker="o", ls="", mfc="none", mec=HIDDEN, ms=7, label="not yet found"),
     plt.Rectangle((0, 0), 1, 1, fc=CELL_CMAP(0.0), ec="none", label="unsearched"),
@@ -182,6 +201,13 @@ class ContinuousPanel:
                                           edgecolors="white", linewidths=0.5, zorder=7)
         self.supplied_sc = ax_grid.scatter([], [], s=person_s * 1.2, marker="P", c=SUPPLIED,
                                            edgecolors="white", linewidths=0.5, zorder=7)
+        self.assigned_sc = ax_grid.scatter([], [], s=person_s * 1.2, marker="X", c=ASSIGNED,
+                                           edgecolors="white", linewidths=0.5, zorder=7)
+        self.flight_lines = LineCollection([], colors=LOADED, linewidths=1, linestyles="--",
+                                           alpha=0.8, zorder=4)
+        ax_grid.add_collection(self.flight_lines)
+        self.deliver_sc = ax_grid.scatter([], [], s=drone_s * 0.6, marker="D", c=LOADED,
+                                          edgecolors="black", linewidths=0.6, zorder=8)
         self.search_sc = ax_grid.scatter([], [], s=drone_s, marker="^", edgecolors="black",
                                          linewidths=0.6, zorder=5)
         self.idle_sc = ax_grid.scatter([], [], s=drone_s * 0.8, marker="o", facecolors="none",
@@ -220,12 +246,19 @@ class ContinuousPanel:
 
         self.img.set_data(snap.cells)
         self.hidden_sc.set_offsets(offsets(~snap.found) if self.show_hidden else empty_xy)
-        self.waiting_sc.set_offsets(offsets(snap.found & ~snap.supplied))
+        self.waiting_sc.set_offsets(offsets(snap.found & ~snap.supplied & ~snap.assigned))
+        self.assigned_sc.set_offsets(offsets(snap.assigned))
+        flight_xy = [pos for pos, _ in snap.flights]
+        self.deliver_sc.set_offsets(pts(flight_xy))
+        self.flight_lines.set_segments([[pos, tuple(self.people_xy[pid])]
+                                        for pos, pid in snap.flights])
         self.supplied_sc.set_offsets(offsets(snap.supplied))
 
         by_cell: dict[tuple, list] = {}
         out_xy, back_xy = [], []
         for pos, status, loaded, frac, did in snap.drones:
+            if status == "deliver":
+                continue  # drawn above, between its start and the person
             if status == "return":
                 # outbound for the first half of the trip, inbound (loaded) for the second
                 x = 2 * frac if frac < 0.5 else 2 * (1 - frac)

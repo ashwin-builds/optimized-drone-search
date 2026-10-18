@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from brute_force import FindThenFetchModel
@@ -87,3 +89,73 @@ def test_keep_searching_sends_nobody_back_while_cells_remain():
     for dec in model.decisions:
         if dec.mode == "search-first":
             assert dec.r == 0
+
+
+def _setup_assignment(drone_cells, person_cells):
+    """A model with free loaded drones and found people at the given cells."""
+    model = ContinuousModel(len(drone_cells), 80, len(person_cells), move_time_per_cell=1.0,
+                            seed=0)
+    for drone, cell in zip(model.drones, drone_cells):
+        drone.pos, drone.has_supplies, drone.status = cell, True, "idle"
+    for person, cell in zip(model.people, person_cells):
+        person.cell, person.found_step = cell, 0.0
+        model.waiting.append(person)
+    model.n_unfound = 0
+    return model
+
+
+def test_worst_served_person_gets_their_nearest_drone_first():
+    # A at x=0, B at x=4. d0 at x=1 is nearest to both; d1 at x=-2.
+    # B's nearest drone (d0, 3 away) is further than A's (d0, 1 away), so B is
+    # served first and takes d0; A then gets d1. Nearest-first would do the opposite.
+    model = _setup_assignment([(1, 0), (-2, 0)], [(0, 0), (4, 0)])
+    model._assign(0.0)
+    a, b = model.people
+    assert model.drones[0].target is b
+    assert model.drones[1].target is a
+    assert model.drones[0].until == pytest.approx(3.0)
+    assert model.drones[1].until == pytest.approx(2.0)
+
+
+def test_pool_is_u_plus_one_closest_and_leftovers_stay_free():
+    # 2 people -> pool of 3 closest drones; the 4th is never considered,
+    # and the unused pool drone stays idle to make its own decision.
+    model = _setup_assignment([(1, 0), (5, 0), (9, 0), (30, 0)], [(0, 0), (6, 0)])
+    model._assign(0.0)
+    assigned = [d.id for d in model.drones if d.status == "deliver"]
+    assert sorted(assigned) == [0, 1]
+    assert model.drones[2].status == "idle" and model.drones[3].status == "idle"
+    assert not model.waiting
+
+
+def test_fewer_drones_than_people_leaves_the_rest_waiting():
+    model = _setup_assignment([(0, 0)], [(1, 0), (10, 0)])
+    model._assign(0.0)
+    # the person whose nearest drone is furthest (x=10) is served first
+    assert model.drones[0].target is model.people[1]
+    assert list(model.waiting) == [model.people[0]]
+
+
+@pytest.mark.parametrize("model_cls", [ContinuousModel, ContinuousKeepSearching,
+                                       ContinuousFindThenFetch])
+@pytest.mark.parametrize("seed", range(10))
+def test_moving_to_serve_takes_travel_time(model_cls, seed):
+    model = model_cls(6, 12, 25, search_time=1.0, trip_time=15.0, move_time_per_cell=0.3,
+                      seed=seed)
+    flights = []
+    orig = model._push
+
+    def push(t, kind, obj):
+        if kind == "delivered":
+            flights.append((obj.started, t, obj.origin, obj.target.cell))
+        orig(t, kind, obj)
+
+    model._push = push
+    model.run()
+    assert all(p.supplied_by is not None for p in model.people)
+    assert len(flights) == len(model.people)
+    for start, end, origin, target in flights:
+        dist = math.hypot(origin[0] - target[0], origin[1] - target[1])
+        assert end - start == pytest.approx(dist * 0.3)
+    for p in model.people:
+        assert p.supplied_step >= p.found_step

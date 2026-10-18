@@ -39,6 +39,22 @@ cells run out, trading longer waits for an earlier finish.
 With trip_time == search_time and spot_at_end=True every drone stays in sync
 and the rule reduces exactly to the discrete model's.
 
+Moving to serve (move_time_per_cell set). Deliveries are no longer instant:
+a loaded drone must fly to the person, taking (straight-line distance in
+cells) * move_time_per_cell. Whenever U people are waiting and there are free
+loaded drones (a drone mid-search finishes its cell first):
+
+  1. take the U + 1 free loaded drones closest to any waiting person;
+  2. among unassigned people, find the one whose nearest pool drone is
+     furthest away and send that nearest drone to them;
+  3. repeat until everyone has a drone or the pool is empty.
+
+Drones left over (including the "+1") make the usual search/return decision.
+A drone that has delivered is empty and decides again from where it is. In
+the balance equation, en-route drones and the people they are flying to
+cancel out: H counts loaded drones not yet committed, U unassigned people.
+Leaving move_time_per_cell as None keeps the instant deliveries above.
+
 Person.found_step / supplied_step hold *times* in this model.
 """
 
@@ -47,6 +63,8 @@ from __future__ import annotations
 import heapq
 import math
 from dataclasses import dataclass
+
+import numpy as np
 
 from drone_model import DroneSearchModel
 
@@ -58,11 +76,13 @@ class CDrone:
     id: int
     pos: tuple[int, int]
     has_supplies: bool
-    status: str = "idle"        # "search" | "return" | "idle"
-    started: float = 0.0        # start of the current search or trip
+    status: str = "idle"        # "search" | "return" | "deliver" | "idle"
+    started: float = 0.0        # start of the current search, trip or delivery flight
     until: float = 0.0          # when it ends
     cell: tuple[int, int] | None = None
     deliveries: int = 0
+    origin: tuple[int, int] | None = None   # where a delivery flight started
+    target: object = None                   # the Person it is flying to
 
 
 @dataclass
@@ -88,13 +108,14 @@ class ContinuousModel(DroneSearchModel):
                  search_time: float = 1.0, trip_time: float = 1.0,
                  cell_area: float = 1.0, start_with_supplies: bool = True,
                  spot_at_end: bool = False, entry_cell: tuple[int, int] = (0, 0),
-                 seed: int | None = None):
+                 move_time_per_cell: float | None = None, seed: int | None = None):
         super().__init__(n_drones, grid_size, n_people, cell_area=cell_area,
                          start_with_supplies=start_with_supplies,
                          entry_cell=entry_cell, seed=seed)
         self.tau = search_time
         self.T = trip_time
         self.spot_at_end = spot_at_end
+        self.move_time = move_time_per_cell
         self.drones = [CDrone(d.id, d.pos, d.has_supplies) for d in self.drones]
         self.time = 0.0
         self.completion_time: float | None = 0.0 if self.done else None
@@ -112,6 +133,10 @@ class ContinuousModel(DroneSearchModel):
         partial = sum((d.until - t) / self.tau for d in self.drones if d.status == "search")
         return self.A * (len(self.unsearched) + partial)
 
+    def loaded_available(self) -> int:
+        """H: loaded drones not already flying to someone."""
+        return sum(d.has_supplies and d.status != "deliver" for d in self.drones)
+
     def search_time_left(self, t: float | None = None) -> float:
         """Time for the whole fleet to finish the remaining search."""
         return self.remaining_area(t) / self.A * self.tau / len(self.drones)
@@ -127,7 +152,7 @@ class ContinuousModel(DroneSearchModel):
 
     def choose_returners(self, free: list[CDrone], t: float) -> list[CDrone]:
         empty = self._shuffled_empty(free)
-        H = sum(d.has_supplies for d in self.drones)
+        H = self.loaded_available()
         F = sum(d.status == "return" for d in self.drones)
         U = len(self.waiting)
         busy = sum(d.status == "search" for d in self.drones)
@@ -181,6 +206,42 @@ class ContinuousModel(DroneSearchModel):
             obj.found_step = t
             self.n_unfound -= 1
             self.waiting.append(obj)
+        elif kind == "delivered":
+            person = obj.target
+            person.supplied_step = t
+            person.supplied_by = obj.id
+            obj.pos, obj.has_supplies = person.cell, False
+            obj.status, obj.target, obj.origin = "idle", None, None
+            obj.deliveries += 1
+            self.n_supplied += 1
+
+    def _assign(self, t: float) -> None:
+        """Send free loaded drones to waiting people (see module docstring)."""
+        free = [d for d in self.drones if d.status == "idle" and d.has_supplies]
+        if not free or not self.waiting:
+            return
+        people = list(self.waiting)
+        drone_xy = np.array([d.pos for d in free], dtype=float)
+        people_xy = np.array([p.cell for p in people], dtype=float)
+        dist = np.hypot(drone_xy[:, None, 0] - people_xy[None, :, 0],
+                        drone_xy[:, None, 1] - people_xy[None, :, 1])  # [drone, person]
+
+        # pool: the U + 1 drones closest to any waiting person
+        pool = np.argsort(dist.min(axis=1), kind="stable")[:len(people) + 1]
+        d = np.full_like(dist, np.inf)
+        d[pool] = dist[pool]
+        while np.isfinite(d).any():
+            nearest = d.min(axis=0)                     # each person's nearest pool drone
+            nearest[~np.isfinite(nearest)] = -1.0       # already assigned
+            j = int(np.argmax(nearest))                 # worst-served person first
+            i = int(np.argmin(d[:, j]))
+            drone, person = free[i], people[j]
+            self.waiting.remove(person)
+            drone.status, drone.target, drone.origin = "deliver", person, drone.pos
+            drone.started, drone.until = t, t + dist[i, j] * self.move_time
+            self._push(drone.until, "delivered", drone)
+            d[i, :] = np.inf
+            d[:, j] = np.inf
 
     def _deliver(self, t: float) -> None:
         if not self.waiting:
@@ -199,6 +260,8 @@ class ContinuousModel(DroneSearchModel):
             self.n_supplied += 1
 
     def _dispatch(self, t: float) -> None:
+        if self.move_time is not None:
+            self._assign(t)
         free = [d for d in self.drones if d.status == "idle"]
         if not free:
             return
@@ -232,7 +295,8 @@ class ContinuousModel(DroneSearchModel):
                 _, _, kind, obj = heapq.heappop(self._events)
                 self._handle(kind, obj, t)
             self.time = t
-            self._deliver(t)
+            if self.move_time is None:
+                self._deliver(t)
             if self.done:
                 self.completion_time = t
                 break
@@ -264,7 +328,7 @@ class ContinuousFindThenFetch(ContinuousModel):
         S = busy + min(len(free) - r, len(self.unsearched))
         R = self.remaining_area(t)
         self.decisions.append(Decision(t, self.n_unfound, R, self.expected_finds(S, R),
-                                       sum(d.has_supplies for d in self.drones), F, U, S, r,
+                                       self.loaded_available(), F, U, S, r,
                                        "fetch-found"))
         return empty[:r]
 

@@ -20,6 +20,7 @@ Derived:
     tau_s = cell area / sweep rate          ~= 1.1 min per cell
     T     = 2 * distance / cruise + restock ~= 36 min round trip
     rho   = T / tau_s                       ~= 33
+    delivery flight inside campus           ~= 0.11 min per 100 m cell
 """
 
 from __future__ import annotations
@@ -63,13 +64,19 @@ class Scenario:
         return 2 * self.distance_km * 1000 / self.cruise_mps / 60 + self.restock_min
 
     @property
+    def move_time_min(self) -> float:
+        """Time to fly one cell side inside the search area (delivery flights)."""
+        return self.cell_side_m / self.cruise_mps / 60
+
+    @property
     def people(self) -> int:
         return round(self.population * self.aid_fraction)
 
     def model_kwargs(self) -> dict:
         """Grid and timing arguments for ContinuousModel (time unit: minutes)."""
         return dict(grid_size=self.k, cell_area=self.cell_area_km2,
-                    search_time=self.search_time_min, trip_time=self.trip_time_min)
+                    search_time=self.search_time_min, trip_time=self.trip_time_min,
+                    move_time_per_cell=self.move_time_min)
 
     def describe(self, people: int | None = None) -> str:
         people = self.people if people is None else people
