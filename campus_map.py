@@ -1,8 +1,15 @@
 """
 The real UW Seattle campus, from OpenStreetMap.
 
-    python campus_map.py fetch        # download boundary + buildings -> data/uw_campus.geojson
-    python campus_map.py info         # summarise the saved map at the default cell size
+    python campus_map.py fetch               # download boundary + buildings -> data/uw_campus.geojson
+    python campus_map.py info                # summarise the saved map at the default cell size
+    python campus_map.py query               # print the Overpass query (for overpass-turbo.eu)
+    python campus_map.py fetch --from a.json # build the map from a saved Overpass JSON export
+
+If every Overpass server is busy, `fetch` retries a few times. If it still
+fails, run `python campus_map.py query`, paste the query into
+https://overpass-turbo.eu, press Run, then Export -> "raw OSM data" (JSON),
+and run `python campus_map.py fetch --from <that file>`.
 
 The saved file holds the campus boundary (amenity=university, "University of
 Washington") and every building footprint whose centre lies on campus, in
@@ -27,6 +34,7 @@ import json
 import math
 import random
 import sys
+import time
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -41,7 +49,10 @@ from shapely.ops import linemerge, polygonize, unary_union
 
 DATA_PATH = Path(__file__).parent / "data" / "uw_campus.geojson"
 OVERPASS_URLS = ["https://overpass-api.de/api/interpreter",
-                 "https://overpass.kumi.systems/api/interpreter"]
+                 "https://overpass.private.coffee/api/interpreter",
+                 "https://overpass.kumi.systems/api/interpreter",
+                 "https://maps.mail.ru/osm/tools/overpass/api/interpreter"]
+RETRY_WAITS_S = (0, 10, 30)    # pause before each round over all mirrors
 # south, west, north, east around the Seattle campus
 UW_BBOX = (47.643, -122.322, 47.664, -122.293)
 # depots (lon, lat): UW Bothell campus and downtown Redmond
@@ -51,13 +62,17 @@ EARTH_R = 6_371_008.8
 
 # ---------------------------------------------------------------------- fetch
 
-_QUERY = """
-[out:json][timeout:120];
+# two small queries are kinder to busy servers than one big one
+_CAMPUS_QUERY = """
+[out:json][timeout:90];
 (
   way["amenity"="university"]["name"="University of Washington"]({bbox});
   relation["amenity"="university"]["name"="University of Washington"]({bbox});
-)->.campus;
-.campus out geom;
+);
+out geom;
+"""
+_BUILDINGS_QUERY = """
+[out:json][timeout:90];
 (
   way["building"]({bbox});
   relation["building"]["type"="multipolygon"]({bbox});
@@ -66,18 +81,40 @@ out geom;
 """
 
 
-def _overpass(query: str) -> dict:
+def _bbox() -> str:
+    s, w, n, e = UW_BBOX
+    return f"{s},{w},{n},{e}"
+
+
+def combined_query() -> str:
+    """Both queries as one, for pasting into overpass-turbo.eu."""
+    body = lambda q: q.split(";", 1)[1].rsplit("out geom;", 1)[0].strip()
+    return (f"[out:json][timeout:180];\n{body(_CAMPUS_QUERY.format(bbox=_bbox()))}\nout geom;\n"
+            f"{body(_BUILDINGS_QUERY.format(bbox=_bbox()))}\nout geom;\n")
+
+
+def _overpass(query: str, sleep=time.sleep) -> dict:
     data = urllib.parse.urlencode({"data": query}).encode()
     errors = []
-    for url in OVERPASS_URLS:
-        try:
-            req = urllib.request.Request(url, data=data,
-                                         headers={"User-Agent": "optimized-drone-search/1.0"})
-            with urllib.request.urlopen(req, timeout=180) as resp:
-                return json.load(resp)
-        except Exception as exc:  # try the next mirror
-            errors.append(f"{url}: {exc}")
-    raise RuntimeError("could not reach Overpass:\n  " + "\n  ".join(errors))
+    for wait in RETRY_WAITS_S:
+        if wait:
+            print(f"  all Overpass servers busy, retrying in {wait} s...", flush=True)
+            sleep(wait)
+        for url in OVERPASS_URLS:
+            try:
+                req = urllib.request.Request(url, data=data,
+                                             headers={"User-Agent": "optimized-drone-search/1.0"})
+                with urllib.request.urlopen(req, timeout=180) as resp:
+                    result = json.loads(resp.read().decode("utf-8"))
+                if "elements" not in result:
+                    raise ValueError(result.get("remark", "response has no elements"))
+                return result
+            except Exception as exc:  # try the next mirror
+                errors.append(f"{url}: {exc}")
+    raise RuntimeError("could not get data from any Overpass server:\n  " + "\n  ".join(errors[-len(OVERPASS_URLS):])
+                       + "\nThe servers are probably overloaded; try again later, or use the manual route:\n"
+                         "  python campus_map.py query   -> paste into https://overpass-turbo.eu, Run,\n"
+                         "  Export -> raw OSM data, then: python campus_map.py fetch --from <file>")
 
 
 def _way_polygon(el: dict) -> Polygon | None:
@@ -116,11 +153,23 @@ def _levels(tags: dict) -> float | None:
     return None
 
 
-def fetch(path: Path = DATA_PATH) -> Path:
-    s, w, n, e = UW_BBOX
-    raw = _overpass(_QUERY.format(bbox=f"{s},{w},{n},{e}"))
+def fetch(path: Path = DATA_PATH, from_files: list[Path] | None = None) -> Path:
+    """Download (or read saved Overpass JSON exports) and write the campus map."""
+    if from_files:
+        elements = []
+        for f in from_files:
+            elements += json.loads(Path(f).read_text(encoding="utf-8"))["elements"]
+    else:
+        print("downloading the campus boundary...", flush=True)
+        elements = _overpass(_CAMPUS_QUERY.format(bbox=_bbox()))["elements"]
+        print("downloading building footprints...", flush=True)
+        elements += _overpass(_BUILDINGS_QUERY.format(bbox=_bbox()))["elements"]
+    # the same element can come back from both queries or several export files
+    unique = {}
+    for el in elements:
+        unique.setdefault((el["type"], el.get("id")), el)
     campus_parts, buildings = [], []
-    for el in raw["elements"]:
+    for el in unique.values():
         tags = el.get("tags", {})
         geom = _way_polygon(el) if el["type"] == "way" else _relation_polygon(el)
         if geom is None:
@@ -141,7 +190,7 @@ def fetch(path: Path = DATA_PATH) -> Path:
             "role": "building", "name": tags.get("name"), "building": tags.get("building"),
             "levels": _levels(tags)}})
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({
+    path.write_text(encoding="utf-8", data=json.dumps({
         "type": "FeatureCollection",
         "source": "(c) OpenStreetMap contributors, ODbL 1.0 - https://www.openstreetmap.org/copyright",
         "fetched": date.today().isoformat(),
@@ -198,7 +247,7 @@ class CampusMap:
 
     @classmethod
     def load(cls, path: Path = DATA_PATH) -> "CampusMap":
-        return cls(json.loads(Path(path).read_text()))
+        return cls(json.loads(Path(path).read_text(encoding="utf-8")))
 
     def _to_m(self, geom):
         return shapely.transform(geom, lambda xy: _project(xy, self.lon0, self.lat0))
@@ -294,24 +343,35 @@ class PeopleLayout:
 
 
 def main():
-    cmd = sys.argv[1] if len(sys.argv) > 1 else "info"
-    if cmd == "fetch":
-        path = fetch()
+    import argparse
+    parser = argparse.ArgumentParser(description="Get and inspect the UW campus map.")
+    parser.add_argument("command", nargs="?", default="info", choices=["fetch", "info", "query"])
+    parser.add_argument("--from", dest="from_files", nargs="+", metavar="FILE",
+                        help="build the map from saved Overpass JSON instead of downloading")
+    args = parser.parse_args()
+    if args.command == "query":
+        print(combined_query())
+        return
+    if args.command == "fetch":
+        try:
+            path = fetch(from_files=args.from_files)
+        except RuntimeError as exc:
+            sys.exit(f"error: {exc}")
         print(f"saved {path}")
-        cmd = "info"
-    if cmd == "info":
-        cmap, grid = load_grid(str(DATA_PATH), 25.0, "redmond")
-        named = sum(1 for _, n, _ in cmap.buildings if n)
-        print(f"{DATA_PATH} (fetched {cmap.fetched})")
-        print(f"  campus area     {cmap.campus.area / 1e6:.3f} km^2, "
-              f"{cmap.width_m:.0f} m x {cmap.height_m:.0f} m bounding box")
-        print(f"  buildings       {len(cmap.buildings)} ({named} named)")
-        print(f"  25 m grid       {grid.k}x{grid.k}, {len(grid.search_cells)} campus cells, "
-              f"{len(grid.building_cells)} with buildings")
-        for depot in DEPOT_LONLAT:
-            g = load_grid(str(DATA_PATH), 25.0, depot)[1]
-            print(f"  {depot:<8} exit at ({g.exit_point[0] * 25:.0f} m, {g.exit_point[1] * 25:.0f} m), "
-                  f"{g.exit_to_depot_m / 1000:.1f} km to the depot")
+    if not DATA_PATH.exists():
+        sys.exit(f"{DATA_PATH} does not exist yet; run `python campus_map.py fetch` first")
+    cmap, grid = load_grid(str(DATA_PATH), 25.0, "redmond")
+    named = sum(1 for _, n, _ in cmap.buildings if n)
+    print(f"{DATA_PATH} (fetched {cmap.fetched})")
+    print(f"  campus area     {cmap.campus.area / 1e6:.3f} km^2, "
+          f"{cmap.width_m:.0f} m x {cmap.height_m:.0f} m bounding box")
+    print(f"  buildings       {len(cmap.buildings)} ({named} named)")
+    print(f"  25 m grid       {grid.k}x{grid.k}, {len(grid.search_cells)} campus cells, "
+          f"{len(grid.building_cells)} with buildings")
+    for depot in DEPOT_LONLAT:
+        g = load_grid(str(DATA_PATH), 25.0, depot)[1]
+        print(f"  {depot:<8} exit at ({g.exit_point[0] * 25:.0f} m, {g.exit_point[1] * 25:.0f} m), "
+              f"{g.exit_to_depot_m / 1000:.1f} km to the depot")
 
 
 if __name__ == "__main__":

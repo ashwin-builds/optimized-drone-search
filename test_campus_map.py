@@ -155,3 +155,53 @@ def test_fetch_builds_the_map_from_an_overpass_response(tmp_path, monkeypatch):
     assert cmap.campus.area == pytest.approx(270_000, rel=2e-3)
     levels = {n: lv for _, n, lv in cmap.buildings}
     assert levels == {"Big Hall": 4.0, "Small Lab": 2.0, "Kiosk": 1.0}
+
+
+def test_overpass_retries_across_mirrors_then_explains(monkeypatch):
+    calls = []
+
+    def fake_urlopen(req, timeout):
+        calls.append(req.full_url)
+        raise OSError("HTTP Error 502: Bad Gateway")
+
+    monkeypatch.setattr(campus_map.urllib.request, "urlopen", fake_urlopen)
+    waits = []
+    with pytest.raises(RuntimeError, match="overpass-turbo"):
+        campus_map._overpass("q", sleep=waits.append)
+    assert len(calls) == len(campus_map.OVERPASS_URLS) * len(campus_map.RETRY_WAITS_S)
+    assert waits == [w for w in campus_map.RETRY_WAITS_S if w]
+
+
+def test_overpass_uses_the_first_mirror_that_answers(monkeypatch):
+    import io
+
+    class Resp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout):
+        if "overpass-api.de" in req.full_url:
+            raise OSError("HTTP Error 502: Bad Gateway")
+        return Resp(b'{"elements": []}')
+
+    monkeypatch.setattr(campus_map.urllib.request, "urlopen", fake_urlopen)
+    assert campus_map._overpass("q", sleep=lambda s: None) == {"elements": []}
+
+
+def test_fetch_from_a_saved_export_handles_non_ascii_names(tmp_path):
+    coords = [{"lon": x, "lat": y} for x, y in CAMPUS.exterior.coords]
+    hall = [{"lon": x, "lat": y} for x, y in BUILDINGS[0][0].exterior.coords]
+    export = {"elements": [
+        {"type": "way", "id": 1, "geometry": coords,
+         "tags": {"amenity": "university", "name": "University of Washington"}},
+        {"type": "way", "id": 2, "geometry": hall,
+         "tags": {"building": "yes", "name": "Kāne Hall – Café", "building:levels": "3"}},
+    ]}
+    src = tmp_path / "export.json"
+    src.write_text(json.dumps(export), encoding="utf-8")
+    out = campus_map.fetch(tmp_path / "map.geojson", from_files=[src])
+    cmap = CampusMap.load(out)
+    assert [(n, lv) for _, n, lv in cmap.buildings] == [("Kāne Hall – Café", 3.0)]
