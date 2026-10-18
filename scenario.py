@@ -3,13 +3,15 @@ Simplified real-world scenario: an earthquake damages the University of
 Washington Seattle campus, and drones fly supplies in from Redmond or Bothell.
 
 Geometry is deliberately crude: the campus is a square of the same area,
-each depot is a straight-line distance away, and every number below is a
-round assumption meant to be edited, not a measured value.
+each depot is a straight-line distance away in a fixed compass direction, and
+every number below is a round assumption meant to be edited, not a measured
+value.
 
-    campus area      703 acres ~= 2.84 km^2  ->  ~1.7 km square
-    cell             100 m x 100 m (1 ha)    ->  k = 17, 289 cells
-    Redmond depot    ~13.8 km straight line from campus
-    Bothell depot    ~14.3 km straight line from campus
+    campus area      703 acres ~= 2.84 km^2  ->  1.69 km square
+    cell             ~25 m (requested side; adjusted so k cells exactly span
+                     the campus, so the modelled area never changes)
+    Redmond depot    ~13.8 km from campus centre, almost due east
+    Bothell depot    ~14.3 km from campus centre, north-east
     drone cruise     15 m/s (54 km/h)
     restock at depot 5 min
     search sweep     30 m wide at 5 m/s       ->  150 m^2/s
@@ -17,10 +19,14 @@ round assumption meant to be edited, not a measured value.
     needing aid      0.5% by default          ->  p = 250
 
 Derived:
-    tau_s = cell area / sweep rate          ~= 1.1 min per cell
-    T     = 2 * distance / cruise + restock ~= 36 min round trip
-    rho   = T / tau_s                       ~= 33
-    delivery flight inside campus           ~= 0.11 min per 100 m cell
+    tau_s = cell area / sweep rate               (total search work is the
+                                                  same for any cell size)
+    T     = 2 * (distance - centre-to-edge) / cruise + restock
+            ~= 35 min round trip from the campus edge facing the depot
+    flying inside campus                         ~= 1.7 s per 25 m cell
+
+Drones leave and re-enter campus at the edge point facing the depot, and
+start the run there, loaded.
 """
 
 from __future__ import annotations
@@ -29,13 +35,16 @@ import math
 from dataclasses import dataclass
 
 CAMPUS_AREA_M2 = 703 * 4046.86
+CAMPUS_SIDE_M = math.sqrt(CAMPUS_AREA_M2)
 DEPOT_DISTANCE_KM = {"redmond": 13.8, "bothell": 14.3}
+# unit vector (east, north) from campus to depot, from straight-line coordinates
+DEPOT_DIRECTION = {"redmond": (0.988, 0.150), "bothell": (0.592, 0.806)}
 
 
 @dataclass
 class Scenario:
     depot: str = "redmond"
-    cell_side_m: float = 100.0
+    cell_side_target_m: float = 25.0
     cruise_mps: float = 15.0
     restock_min: float = 5.0
     sweep_width_m: float = 30.0
@@ -45,7 +54,12 @@ class Scenario:
 
     @property
     def k(self) -> int:
-        return max(1, round(math.sqrt(CAMPUS_AREA_M2) / self.cell_side_m))
+        return max(1, round(CAMPUS_SIDE_M / self.cell_side_target_m))
+
+    @property
+    def cell_side_m(self) -> float:
+        """Actual cell side: k cells span the campus exactly."""
+        return CAMPUS_SIDE_M / self.k
 
     @property
     def cell_area_km2(self) -> float:
@@ -56,12 +70,29 @@ class Scenario:
         return DEPOT_DISTANCE_KM[self.depot]
 
     @property
+    def depot_point(self) -> tuple[float, float]:
+        """Where drones leave/enter campus: the edge point facing the depot (cell units)."""
+        ux, uy = DEPOT_DIRECTION[self.depot]
+        half = self.k / 2
+        s = half / max(abs(ux), abs(uy))
+        eps = 1e-6
+        return (min(self.k - eps, max(eps, half + s * ux)),
+                min(self.k - eps, max(eps, half + s * uy)))
+
+    @property
+    def edge_offset_m(self) -> float:
+        """Distance from campus centre to the depot-facing edge point."""
+        ux, uy = DEPOT_DIRECTION[self.depot]
+        return CAMPUS_SIDE_M / 2 / max(abs(ux), abs(uy))
+
+    @property
     def search_time_min(self) -> float:
         return self.cell_side_m ** 2 / (self.sweep_width_m * self.search_speed_mps) / 60
 
     @property
     def trip_time_min(self) -> float:
-        return 2 * self.distance_km * 1000 / self.cruise_mps / 60 + self.restock_min
+        off_campus_m = self.distance_km * 1000 - self.edge_offset_m
+        return 2 * off_campus_m / self.cruise_mps / 60 + self.restock_min
 
     @property
     def move_time_min(self) -> float:
@@ -76,16 +107,17 @@ class Scenario:
         """Grid and timing arguments for ContinuousModel (time unit: minutes)."""
         return dict(grid_size=self.k, cell_area=self.cell_area_km2,
                     search_time=self.search_time_min, trip_time=self.trip_time_min,
-                    move_time_per_cell=self.move_time_min)
+                    move_time_per_cell=self.move_time_min, depot_point=self.depot_point,
+                    entry_cell=(int(self.depot_point[0]), int(self.depot_point[1])))
 
     def describe(self, people: int | None = None) -> str:
         people = self.people if people is None else people
         return (f"UW Seattle campus, supplies from {self.depot.title()} ({self.distance_km:g} km)\n"
-                f"  grid {self.k}x{self.k} cells of {self.cell_side_m:g} m "
+                f"  grid {self.k}x{self.k} cells of {self.cell_side_m:.1f} m "
                 f"({self.k ** 2 * self.cell_area_km2:.2f} km^2)\n"
-                f"  search {self.search_time_min:.2f} min/cell, "
-                f"round trip {self.trip_time_min:.1f} min, "
-                f"rho = {self.trip_time_min / self.search_time_min:.1f}\n"
+                f"  search {self.search_time_min * 60:.1f} s/cell "
+                f"({self.k ** 2 * self.search_time_min:.0f} drone-min for the campus), "
+                f"round trip {self.trip_time_min:.1f} min from the campus edge\n"
                 f"  people needing aid: {people}"
                 + (f" ({self.aid_fraction:.2%} of {self.population:,})"
                    if people == self.people else " (set directly)"))
@@ -103,11 +135,14 @@ def main():
                         help="people needing aid (default: population x aid fraction)")
     parser.add_argument("--depot", choices=sorted(DEPOT_DISTANCE_KM), default="redmond")
     parser.add_argument("--aid-fraction", type=float, default=0.005)
+    parser.add_argument("--cell-side", type=float, default=25.0,
+                        help="target cell side in metres (default 25)")
     parser.add_argument("--runs", type=int, default=100)
     parser.add_argument("--seed", type=int, default=0, help="first seed")
     args = parser.parse_args()
 
-    sc = Scenario(depot=args.depot, aid_fraction=args.aid_fraction)
+    sc = Scenario(depot=args.depot, aid_fraction=args.aid_fraction,
+                  cell_side_target_m=args.cell_side)
     p = sc.people if args.p is None else args.p
     print(sc.describe(p))
     print(f"  drones: {args.n}, people: {p}, runs: {args.runs}\n")

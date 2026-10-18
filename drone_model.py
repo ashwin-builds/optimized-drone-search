@@ -42,6 +42,9 @@ class Person:
     found_step: int | None = None
     supplied_step: int | None = None
     supplied_by: int | None = None  # drone id; set exactly once
+    # used by the continuous model only
+    xy: tuple[float, float] | None = None   # exact position, in cell units
+    spot_frac: float = 1.0                  # how far into its cell's search it is spotted
 
 
 @dataclass

@@ -63,12 +63,22 @@ def test_people_spotted_during_their_cells_search():
 
 def test_uw_scenario_numbers():
     sc = Scenario()
-    assert sc.k == 17
-    assert sc.search_time_min == pytest.approx(10_000 / 150 / 60)
-    assert sc.trip_time_min == pytest.approx(2 * 13_800 / 15 / 60 + 5)
+    assert sc.k == 67
+    assert sc.k * sc.cell_side_m == pytest.approx(math.sqrt(703 * 4046.86))
+    assert sc.search_time_min == pytest.approx(sc.cell_side_m ** 2 / 150 / 60)
+    assert sc.trip_time_min == pytest.approx(2 * (13_800 - sc.edge_offset_m) / 15 / 60 + 5)
     assert sc.people == 250
-    model = ContinuousModel(20, n_people=sc.people, seed=0, **sc.model_kwargs())
+    # the depot entry point is on the east edge for Redmond
+    assert sc.depot_point[0] == pytest.approx(sc.k, abs=1e-5)
+    model = ContinuousModel(20, n_people=sc.people, seed=0, check=True, **sc.model_kwargs())
     assert model.run() > 0
+
+
+@pytest.mark.parametrize("cell", [100.0, 50.0, 25.0, 10.0])
+def test_cell_size_keeps_campus_area_and_total_search_work(cell):
+    sc = Scenario(cell_side_target_m=cell)
+    assert sc.k ** 2 * sc.cell_area_km2 == pytest.approx(703 * 4046.86 / 1e6)
+    assert sc.k ** 2 * sc.search_time_min == pytest.approx(703 * 4046.86 / 150 / 60)
 
 
 def test_expected_value_always_balances():
@@ -103,9 +113,9 @@ def _setup_assignment(drone_cells, person_cells):
     model = ContinuousModel(len(drone_cells), 80, len(person_cells), move_time_per_cell=1.0,
                             seed=0)
     for drone, cell in zip(model.drones, drone_cells):
-        drone.pos, drone.has_supplies, drone.status = cell, True, "idle"
+        drone.pos, drone.loc, drone.has_supplies, drone.status = cell, cell, True, "idle"
     for person, cell in zip(model.people, person_cells):
-        person.cell, person.found_step = cell, 0.0
+        person.cell, person.xy, person.found_step = cell, cell, 0.0
         model.waiting.append(person)
     model.n_unfound = 0
     return model
@@ -154,7 +164,7 @@ def test_moving_to_serve_takes_travel_time(model_cls, seed):
 
     def push(t, kind, obj):
         if kind == "delivered":
-            flights.append((obj.started, t, obj.origin, obj.target.cell))
+            flights.append((obj.started, t, obj.origin, obj.target.xy))
         orig(t, kind, obj)
 
     model._push = push

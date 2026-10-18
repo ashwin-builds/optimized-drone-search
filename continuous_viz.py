@@ -26,8 +26,7 @@ from matplotlib.lines import Line2D
 
 from continuous_model import CONTINUOUS_ALGORITHMS, ContinuousModel, Decision
 from scenario import DEPOT_DISTANCE_KM, Scenario
-from visualize import (EMPTY, HIDDEN, LOADED, SUPPLIED, WAITING, person_offsets, show_or_save,
-                       spread)
+from visualize import EMPTY, HIDDEN, LOADED, SUPPLIED, WAITING, show_or_save, spread
 
 ASSIGNED = "#9467bd"    # found, a drone is flying to them
 CELL_CMAP = LinearSegmentedColormap.from_list("search", ["#d0d0d0", "#fbfbf6"])
@@ -57,22 +56,27 @@ def snapshot(model: ContinuousModel, t: float) -> CSnapshot:
         cells[y, x] = 1.0
     drones, flights = [], []
     assigned = np.zeros(len(model.people), dtype=bool)
+    # model positions are in cell units with cell (x, y) spanning [x, x+1);
+    # the plot puts cell centres on integers, hence the -0.5
     for d in model.drones:
-        pos = d.pos
-        if d.status == "deliver":
+        pos = (d.loc[0] - 0.5, d.loc[1] - 0.5)
+        frac = 0.0
+        if d.status in ("deliver", "transit", "exit"):
+            end = {"deliver": lambda: d.target.xy,
+                   "transit": lambda: (d.cell[0] + 0.5, d.cell[1] + 0.5),
+                   "exit": lambda: model.depot_point}[d.status]()
             span = d.until - d.started
             frac = min(1.0, (t - d.started) / span) if span > 0 else 1.0
-            (x0, y0), (x1, y1) = d.origin, d.target.cell
-            pos = (x0 + frac * (x1 - x0), y0 + frac * (y1 - y0))
-            assigned[d.target.id] = True
-            flights.append((pos, d.target.id))
+            (x0, y0), (x1, y1) = d.origin, end
+            pos = (x0 + frac * (x1 - x0) - 0.5, y0 + frac * (y1 - y0) - 0.5)
+            if d.status == "deliver":
+                assigned[d.target.id] = True
+                flights.append((pos, d.target.id))
         elif d.status == "search":
             frac = min(1.0, (t - d.started) / model.tau)
             cells[d.cell[1], d.cell[0]] = frac
         elif d.status == "return":
             frac = min(1.0, (t - d.started) / model.T)
-        else:
-            frac = 0.0
         drones.append((pos, d.status, d.has_supplies, frac, d.id))
     return CSnapshot(
         time=t,
@@ -112,9 +116,8 @@ def info_text(snap: CSnapshot, model: ContinuousModel, sc: Scenario) -> str:
         f"time  {clock(snap.time)}",
         "",
         f"drones N          {len(model.drones)}",
-        f"search / cell     {model.tau:.2f} min",
+        f"search / cell     {model.tau * 60:.1f} s",
         f"round trip T      {model.T:.1f} min",
-        f"rho = T / tau_s   {model.T / model.tau:.1f}",
         "",
         f"people found      {p - snap.n_unfound} / {p}",
         f"people supplied   {snap.n_supplied} / {p}",
@@ -186,15 +189,17 @@ class ContinuousPanel:
         ax_grid.set_yticks([])
         ax_grid.set_aspect("equal")
         ax_grid.set_xlabel(f"UW Seattle campus (simplified), {k}x{k} cells of "
-                           f"{sc.cell_side_m:g} m", fontsize=8.5)
+                           f"{sc.cell_side_m:.1f} m", fontsize=8.5)
 
         pos = ax_grid.get_position()
         fig_w, fig_h = fig.get_size_inches()
         cell_pt = min(pos.width * fig_w, pos.height * fig_h) * 72 / k
-        person_s = (0.32 * cell_pt) ** 2
-        drone_s = (0.55 * cell_pt) ** 2
+        # fine grids make cells tiny; keep markers readable
+        person_s = max((0.32 * cell_pt) ** 2, 14)
+        drone_s = max((0.55 * cell_pt) ** 2, 45)
 
-        self.people_xy = person_offsets(model)
+        self.people_xy = (np.array([(p.xy[0] - 0.5, p.xy[1] - 0.5) for p in model.people])
+                          if model.people else np.empty((0, 2)))
         self.hidden_sc = ax_grid.scatter([], [], s=person_s, marker="o", facecolors="none",
                                          edgecolors=HIDDEN, linewidths=0.8, alpha=0.6, zorder=6)
         self.waiting_sc = ax_grid.scatter([], [], s=person_s * 1.2, marker="X", c=WAITING,
@@ -212,6 +217,8 @@ class ContinuousPanel:
                                          linewidths=0.6, zorder=5)
         self.idle_sc = ax_grid.scatter([], [], s=drone_s * 0.8, marker="o", facecolors="none",
                                        linewidths=2, zorder=5)
+        self.exit_sc = ax_grid.scatter([], [], s=drone_s * 0.7, marker=">", c=EMPTY,
+                                       edgecolors="black", linewidths=0.5, zorder=8)
 
         ax_depot.set_xlim(-0.04, 1.04)
         ax_depot.set_ylim(-1.2, 1.2)
@@ -255,10 +262,15 @@ class ContinuousPanel:
         self.supplied_sc.set_offsets(offsets(snap.supplied))
 
         by_cell: dict[tuple, list] = {}
-        out_xy, back_xy = [], []
+        out_xy, back_xy, exit_xy = [], [], []
         for pos, status, loaded, frac, did in snap.drones:
             if status == "deliver":
                 continue  # drawn above, between its start and the person
+            if status == "exit":
+                exit_xy.append(pos)
+                continue
+            if status == "transit":
+                status = "search"  # flying to the cell it is about to search
             if status == "return":
                 # outbound for the first half of the trip, inbound (loaded) for the second
                 x = 2 * frac if frac < 0.5 else 2 * (1 - frac)
@@ -267,7 +279,7 @@ class ContinuousPanel:
                 by_cell.setdefault(pos, []).append((status, loaded))
         search_xy, search_c, idle_xy, idle_c = [], [], [], []
         for (x, y), ds in by_cell.items():
-            for (status, loaded), (dx, dy) in zip(ds, spread(len(ds), 0.25)):
+            for (status, loaded), (dx, dy) in zip(ds, spread(len(ds), max(0.25, 0.012 * self.model.k))):
                 color = LOADED if loaded else EMPTY
                 if status == "search":
                     search_xy.append((x + dx, y + dy))
@@ -279,6 +291,7 @@ class ContinuousPanel:
         self.search_sc.set_facecolors(search_c or "none")
         self.idle_sc.set_offsets(pts(idle_xy))
         self.idle_sc.set_edgecolors(idle_c or "none")
+        self.exit_sc.set_offsets(pts(exit_xy))
         self.out_sc.set_offsets(pts(out_xy))
         self.back_sc.set_offsets(pts(back_xy))
         self.info.set_text(info_text(snap, self.model, self.sc))
@@ -292,6 +305,8 @@ def main():
                         help="people needing aid (default: population x aid fraction)")
     parser.add_argument("--depot", choices=sorted(DEPOT_DISTANCE_KM), default="redmond")
     parser.add_argument("--aid-fraction", type=float, default=0.005)
+    parser.add_argument("--cell-side", type=float, default=25.0,
+                        help="target cell side in metres (default 25)")
     parser.add_argument("--algo", nargs="+", choices=sorted(CONTINUOUS_ALGORITHMS) + ["both"],
                         default=["expected"],
                         help="one or more algorithms to show side by side; "
@@ -306,7 +321,8 @@ def main():
     parser.add_argument("--save", metavar="FILE", help="write .gif or .mp4 instead of showing")
     args = parser.parse_args()
 
-    sc = Scenario(depot=args.depot, aid_fraction=args.aid_fraction)
+    sc = Scenario(depot=args.depot, aid_fraction=args.aid_fraction,
+                  cell_side_target_m=args.cell_side)
     p = sc.people if args.p is None else args.p
     keys = []
     for key in args.algo:

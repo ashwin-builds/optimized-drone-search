@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Drone Search Simulator</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="vendor/chart.umd.js"></script>  <!-- Chart.js 4.4.1, MIT, bundled so the page works offline -->
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>Drone search simulator</h1>
+    <p class="sub">Earthquake at UW Seattle, supplies flown in from Redmond or Bothell</p>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="scenario" role="tab">Scenario</button>
+    <button class="tab" data-tab="bench" role="tab">Benchmark</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ============================== SCENARIO ============================== -->
+  <section id="tab-scenario" class="tabpanel">
+    <form id="run-form" class="controls">
+      <label>Drones <input name="drones" type="number" min="1" max="500" value="20"></label>
+      <label>People <input name="people" type="number" min="0" max="5000" value="60"></label>
+      <label>Depot <select name="depot"></select></label>
+      <label>Cell size (m) <input name="cell_side" type="number" min="5" max="200" step="1" value="25"></label>
+      <label>Seed <input name="seed" type="number" min="0" value="0"></label>
+      <fieldset class="algos" data-role="algos"><legend>Algorithms</legend></fieldset>
+      <label class="check"><input name="check" type="checkbox"> Built-in checks</label>
+      <button type="submit" class="primary">Run</button>
+    </form>
+    <p id="run-status" class="status" role="status"></p>
+    <p id="scenario-info" class="info"></p>
+
+    <div id="run-output" hidden>
+      <div class="card">
+        <h2>Results</h2>
+        <div class="table-wrap"><table id="metrics-table" class="data"></table></div>
+        <p class="note">Bold marks the best value in each row. Times are in hours:minutes unless shown in minutes.</p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h2>People found over time</h2>
+          <div class="chart"><canvas id="chart-found"></canvas></div>
+        </div>
+        <div class="card">
+          <h2>People served over time</h2>
+          <div class="chart"><canvas id="chart-served"></canvas></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="replay-head">
+          <h2>Replay</h2>
+          <div class="replay-controls">
+            <button id="play" type="button" class="primary" aria-label="Play">Play</button>
+            <label>Speed
+              <select id="speed">
+                <option value="1">1 min/s</option>
+                <option value="2">2 min/s</option>
+                <option value="5" selected>5 min/s</option>
+                <option value="10">10 min/s</option>
+                <option value="30">30 min/s</option>
+                <option value="60">60 min/s</option>
+              </select>
+            </label>
+            <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Time">
+            <span id="clock" class="clock">0h 00.0m</span>
+            <label class="check"><input id="show-unfound" type="checkbox"> Show unfound people</label>
+          </div>
+        </div>
+        <div id="replays" class="replays"></div>
+        <ul class="legend" id="replay-legend"></ul>
+      </div>
+
+      <div class="card">
+        <h2>How drones spent their time</h2>
+        <div class="table-wrap"><table id="time-table" class="data"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== BENCHMARK ============================== -->
+  <section id="tab-bench" class="tabpanel" hidden>
+    <form id="bench-form" class="controls">
+      <label>Drones <input name="drones" value="10 20 50" title="space-separated list"></label>
+      <label>People <input name="people" value="60 250" title="space-separated list"></label>
+      <label>Seeds per setting <input name="runs" type="number" min="1" max="1000" value="20"></label>
+      <label>Depot <select name="depot"></select></label>
+      <label>Cell size (m) <input name="cell_side" type="number" min="5" max="200" value="25"></label>
+      <fieldset class="algos" data-role="algos"><legend>Algorithms</legend></fieldset>
+      <label>Compare against <select name="baseline"></select></label>
+      <label class="check"><input name="check" type="checkbox"> Built-in checks</label>
+      <button type="submit" class="primary">Run benchmark</button>
+    </form>
+    <div id="bench-progress" class="progress" hidden><div></div><span></span></div>
+    <p id="bench-status" class="status" role="status"></p>
+
+    <div id="bench-output" hidden>
+      <div class="grid2">
+        <div class="card">
+          <div class="card-head">
+            <h2>Completion time vs drones</h2>
+            <label>People <select id="bench-people"></select></label>
+          </div>
+          <div class="chart"><canvas id="chart-bench-completion"></canvas></div>
+        </div>
+        <div class="card">
+          <h2>Mean wait (found to served) vs drones</h2>
+          <div class="chart"><canvas id="chart-bench-wait"></canvas></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <h2>Summary</h2>
+          <a id="bench-csv" class="button" href="#" download>Download per-run CSV</a>
+        </div>
+        <div class="table-wrap"><table id="bench-table" class="data"></table></div>
+        <p class="note">± is the 95% confidence interval. "vs baseline" is paired seed by seed: every
+          algorithm sees the same people at the same moments, so the difference is the algorithm's effect.
+          Negative completion and wait differences are better.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
