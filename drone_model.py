@@ -49,6 +49,9 @@ class Drone:
     id: int
     pos: tuple[int, int]
     has_supplies: bool
+    # What the drone did in the most recent step, for inspection/visualisation.
+    action: str = "idle"    # "search" | "return" | "idle"
+    carried: bool = False   # had supplies at the start of that step
 
 
 @dataclass
@@ -190,6 +193,11 @@ class DroneSearchModel:
         returners = empty[:r]
         field_drones = loaded + empty[r:]
         searchers = field_drones[:s]
+        for drone in self.drones:
+            drone.carried = drone.has_supplies
+            drone.action = "idle"
+        for drone in returners:
+            drone.action = "return"
 
         # Search: no two drones search the same cell in a step.
         n_searched = 0
@@ -199,6 +207,7 @@ class DroneSearchModel:
             if cell is None:
                 break
             n_searched += 1
+            drone.action = "search"
             drone.pos = cell
             self.unsearched.discard(cell)
             for person in self.people_in_cell.get(cell, []):
