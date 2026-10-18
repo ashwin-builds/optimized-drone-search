@@ -25,7 +25,7 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.lines import Line2D
 
 from continuous_model import CONTINUOUS_ALGORITHMS, ContinuousModel, Decision
-from scenario import CAMPUS_CHOICES, DEPOT_DISTANCE_KM, Scenario
+from scenario import CAMPUS_CHOICES, DEPOT_CHOICES, Scenario
 from visualize import EMPTY, HIDDEN, LOADED, SUPPLIED, WAITING, show_or_save, spread
 
 ASSIGNED = "#9467bd"    # found, a drone is flying to them
@@ -322,7 +322,7 @@ def main():
     parser.add_argument("-n", type=int, default=20, help="number of drones (default 20)")
     parser.add_argument("-p", type=int, default=None,
                         help="people needing aid (default: population x aid fraction)")
-    parser.add_argument("--depot", choices=sorted(DEPOT_DISTANCE_KM), default="redmond")
+    parser.add_argument("--depot", choices=DEPOT_CHOICES, default="redmond")
     parser.add_argument("--aid-fraction", type=float, default=0.005)
     parser.add_argument("--cell-side", type=float, default=25.0,
                         help="target cell side in metres (default 25)")

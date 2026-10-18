@@ -34,6 +34,12 @@ Derived:
 
 Drones leave and re-enter campus at the edge point facing the depot, and
 start the run there, loaded.
+
+Staging areas (real map only): depot="rainier_vista", "hub_yard", "denny_yard",
+"parrington_lawn" are campus Mass Assembly Areas where relief supplies would be
+staged, and "uw_tower" is next to the Emergency Operations Center just west of
+campus (see campus_map.STAGING_LONLAT). An on-campus depot is its own exit, so a
+depot run is the flight across campus plus the 5 min restock.
 """
 
 from __future__ import annotations
@@ -44,7 +50,7 @@ from pathlib import Path
 
 from functools import lru_cache
 
-from campus_map import DATA_PATH, Grid, PeopleLayout, load_grid
+from campus_map import DATA_PATH, DEPOT_LONLAT, STAGING_LONLAT, Grid, PeopleLayout, load_grid
 from density import VISITORS_PATH, DensityLayout, DensitySurface
 
 CAMPUS_AREA_M2 = 703 * 4046.86
@@ -52,6 +58,10 @@ CAMPUS_SIDE_M = math.sqrt(CAMPUS_AREA_M2)
 DEPOT_DISTANCE_KM = {"redmond": 13.8, "bothell": 14.3}
 # unit vector (east, north) from campus to depot, from straight-line coordinates
 DEPOT_DIRECTION = {"redmond": (0.988, 0.150), "bothell": (0.592, 0.806)}
+DEPOT_CHOICES = tuple(DEPOT_LONLAT)   # staging areas need the real map
+DEPOT_NAMES = {"redmond": "Redmond", "bothell": "Bothell", "rainier_vista": "Rainier Vista",
+               "hub_yard": "HUB Yard", "denny_yard": "Denny Yard",
+               "parrington_lawn": "Parrington Lawn", "uw_tower": "UW Tower"}
 
 
 CAMPUS_CHOICES = ("auto", "uw", "square")
@@ -89,6 +99,20 @@ class Scenario:
     search_speed_mps: float = 5.0
     population: int = 50_000
     aid_fraction: float = 0.005
+
+    def __post_init__(self):
+        if self.depot not in DEPOT_CHOICES:
+            raise ValueError(f"depot must be one of {DEPOT_CHOICES}")
+        if self.depot in STAGING_LONLAT and not self.uses_map:
+            raise ValueError(f"the {self.depot} staging area needs the real campus map")
+
+    @property
+    def depot_name(self) -> str:
+        return DEPOT_NAMES.get(self.depot, self.depot)
+
+    @property
+    def depot_on_campus(self) -> bool:
+        return self.uses_map and self.map_grid[1].exit_to_depot_m == 0.0
 
     # ---------------------------------------------------------------- map
 
@@ -220,8 +244,9 @@ class Scenario:
             where = ("  map: square approximation (run `python campus_map.py fetch` for the real campus)\n"
                      f"  grid {self.k}x{self.k} cells of {self.cell_side_m:.1f} m "
                      f"({self.k ** 2 * self.cell_area_km2:.2f} km^2)\n")
-        return (f"UW Seattle campus, supplies from {self.depot.title()} "
-                f"({self.edge_to_depot_km:.1f} km from the campus exit)\n"
+        source = (f"{self.depot_name} (staging area on campus)" if self.depot_on_campus else
+                  f"{self.depot_name} ({self.edge_to_depot_km:.1f} km from the campus exit)")
+        return (f"UW Seattle campus, supplies from {source}\n"
                 + where +
                 f"  search {self.search_time_min * 60:.1f} s/cell "
                 f"({self.n_search_cells * self.search_time_min:.0f} drone-min for the campus), "
@@ -241,7 +266,7 @@ def main():
     parser.add_argument("-n", type=int, default=20, help="number of drones (default 20)")
     parser.add_argument("-p", type=int, default=None,
                         help="people needing aid (default: population x aid fraction)")
-    parser.add_argument("--depot", choices=sorted(DEPOT_DISTANCE_KM), default="redmond")
+    parser.add_argument("--depot", choices=DEPOT_CHOICES, default="redmond")
     parser.add_argument("--aid-fraction", type=float, default=0.005)
     parser.add_argument("--cell-side", type=float, default=25.0,
                         help="target cell side in metres (default 25)")

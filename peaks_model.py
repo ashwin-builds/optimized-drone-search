@@ -600,7 +600,17 @@ PEAK_ALGORITHMS = {
     "peaks-reserve-scavengers": PeaksReserveScavengers,
 }
 
+class PeaksBest(PeakGroupModel):
+    """The best-performing peak-group settings so far (shown in the demo)."""
+    name = "peak groups (best)"
+    rule = "reserve scavengers, runners rejoin as scavengers, groups split by basin rate"
+    size_strategy = "reserve"
+    rejoin = "scavengers"
+    split_rule = "basin"
+
+
 # register with the simulator's algorithm table (see the end of continuous_model.py)
 from continuous_model import CONTINUOUS_ALGORITHMS  # noqa: E402
 
 CONTINUOUS_ALGORITHMS.update(PEAK_ALGORITHMS)
+CONTINUOUS_ALGORITHMS["peaks-best"] = PeaksBest

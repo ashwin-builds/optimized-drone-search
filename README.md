@@ -44,6 +44,21 @@ approximation.
 Map data © OpenStreetMap contributors, available under the
 [Open Database License](https://www.openstreetmap.org/copyright).
 
+## Staging areas and the demo
+
+Besides Redmond and Bothell, `--depot` (and the dashboard's Depot menu) can put the
+supplies on or next to campus: `rainier_vista`, `hub_yard`, `denny_yard`,
+`parrington_lawn` are campus Mass Assembly Areas that UW EH&S lists for staging relief
+supplies, and `uw_tower` is beside the Emergency Operations Center just west of campus.
+Positions are approximate (about 50 m). An on-campus depot is its own exit, so a depot
+run is the flight across campus plus the 5 min restock; these depots need the real map.
+
+**Run demo** on the dashboard runs 20 drones / 250 people on the UW map with supplies at
+Rainier Vista (the replay), and compares Redmond with Rainier Vista over 8 seeds for
+`expected`, `greedy-density`, `peaks-best` and find-then-fetch, leading with mean wait.
+`peaks-best` is the best peak-group setting so far (reserve sizes, runners rejoin as
+scavengers, `split_rule=basin`).
+
 ## Density surface
 
 `density.py` builds the searcher's prior belief of where people are, from

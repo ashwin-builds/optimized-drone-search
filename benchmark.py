@@ -26,7 +26,7 @@ from dataclasses import asdict, dataclass, field
 
 from continuous_model import CONTINUOUS_ALGORITHMS
 from metrics import summarize
-from scenario import CAMPUS_CHOICES, DEPOT_DISTANCE_KM, PEOPLE_CHOICES, Scenario
+from scenario import CAMPUS_CHOICES, DEPOT_CHOICES, PEOPLE_CHOICES, Scenario
 
 # two-sided 95% Student t critical values by degrees of freedom
 _T95 = [(1, 12.706), (2, 4.303), (3, 3.182), (4, 2.776), (5, 2.571), (6, 2.447), (7, 2.365),
@@ -232,7 +232,7 @@ def main():
     parser.add_argument("--compare-to", nargs="*", default=[],
                         help="extra algorithms to report paired differences against")
     parser.add_argument("--baseline", default="brute")
-    parser.add_argument("--depot", choices=sorted(DEPOT_DISTANCE_KM), default="redmond")
+    parser.add_argument("--depot", choices=DEPOT_CHOICES, default="redmond")
     parser.add_argument("--cell-side", type=float, default=25.0)
     parser.add_argument("--campus", choices=CAMPUS_CHOICES, default="auto",
                         help="real UW map, square approximation, or auto (map if downloaded)")

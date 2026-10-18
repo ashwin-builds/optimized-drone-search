@@ -11,7 +11,7 @@
 <header class="top">
   <div>
     <h1>Drone search simulator</h1>
-    <p class="sub">Earthquake at UW Seattle, supplies flown in from Redmond or Bothell</p>
+    <p class="sub">Earthquake at UW Seattle: drones search campus and bring relief kits from a depot or an on-campus staging area</p>
   </div>
   <nav class="tabs" role="tablist">
     <button class="tab active" data-tab="scenario" role="tab">Scenario</button>
@@ -22,6 +22,21 @@
 <main>
   <!-- ============================== SCENARIO ============================== -->
   <section id="tab-scenario" class="tabpanel">
+    <div class="card demo">
+      <div class="card-head">
+        <h2>Demo: earthquake on the UW campus</h2>
+        <button id="demo-run" type="button" class="primary">Run demo</button>
+      </div>
+      <p class="note">Runs the UW scenario with supplies staged at Rainier Vista, one of the campus
+        Mass Assembly Areas UW lists for staging relief supplies, and compares it with flying them
+        in from Redmond. The replay below shows the staged run.</p>
+      <p id="demo-status" class="status" role="status"></p>
+      <div id="demo-output" hidden>
+        <p id="demo-headline" class="headline"></p>
+        <div class="table-wrap"><table id="demo-table" class="data"></table></div>
+        <p id="demo-note" class="note"></p>
+      </div>
+    </div>
     <form id="run-form" class="controls">
       <label>Drones <input name="drones" type="number" min="1" max="500" value="20"></label>
       <label>People <input name="people" type="number" min="0" max="5000" value="60"></label>

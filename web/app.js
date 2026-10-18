@@ -5,7 +5,8 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const ALGO_VAR = { expected: "--series-1", keep: "--series-2", brute: "--series-3",
-                   "greedy-density": "--series-4", "expected-uniform": "--series-5" };
+                   "greedy-density": "--series-4", "expected-uniform": "--series-5",
+                   "peaks-best": "--series-8" };
 // drone colours for peak groups (categorical order); scavengers use the muted ink
 const GROUP_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300",
                       "#6250d6", "#e34948"];
@@ -76,8 +77,8 @@ const state = {
 async function init() {
   state.options = await api("/api/options");
   for (const select of document.querySelectorAll("select[name=depot]")) {
-    for (const [key, km] of Object.entries(state.options.depots)) {
-      select.append(el("option", { value: key }, `${key[0].toUpperCase()}${key.slice(1)} (${km} km)`));
+    for (const [key, label] of Object.entries(state.options.depots)) {
+      select.append(el("option", { value: key }, label));
     }
   }
   for (const fs of document.querySelectorAll("[data-role=algos]")) {
@@ -105,6 +106,7 @@ async function init() {
   }));
 
   $("#run-form").addEventListener("submit", onRun);
+  $("#demo-run").addEventListener("click", onDemo);
   $("#bench-form").addEventListener("submit", onBench);
   $("#play").addEventListener("click", togglePlay);
   $("#scrub").addEventListener("input", (e) => {
@@ -131,9 +133,12 @@ function formValues(form) {
 
 async function onRun(event) {
   event.preventDefault();
-  const params = formValues(event.target);
+  return runScenario(formValues(event.target));
+}
+
+async function runScenario(params) {
   if (!params.algos) return setStatus("#run-status", "Pick at least one algorithm.", true);
-  const btn = event.target.querySelector("button[type=submit]");
+  const btn = $("#run-form button[type=submit]");
   btn.disabled = true;
   setStatus("#run-status", "Running…");
   $("#run-output").style.opacity = 0.5;
@@ -156,6 +161,98 @@ async function onRun(event) {
   }
 }
 
+/* -------------------------------------------------------------------- demo */
+
+async function onDemo() {
+  const d = state.options.demo;
+  const form = $("#run-form");
+  // fill the scenario form so the replay below is the demo's own run
+  for (const k of ["drones", "people", "seed", "depot", "campus", "cell_side"]) form.elements[k].value = d[k];
+  for (const box of form.querySelectorAll("input[name=algos]")) box.checked = d.algos.includes(box.value);
+  const btn = $("#demo-run");
+  btn.disabled = true;
+  const out = $("#demo-output");
+  out.hidden = true;
+  try {
+    const job = api("/api/demo", {});   // depot comparison runs while the replay renders
+    await runScenario(formValues(form));
+    const { job: id } = await job;
+    for (;;) {
+      const status = await api(`/api/benchmark/${id}`);
+      setStatus("#demo-status", `Comparing depots over ${d.runs} seeds… ${status.done} / ${status.total} runs`);
+      if (status.finished) {
+        if (status.error) throw new Error(status.error);
+        renderDemo(status);
+        setStatus("#demo-status", "");
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 600));
+    }
+  } catch (err) {
+    setStatus("#demo-status", err.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderDemo(status) {
+  const d = state.options.demo;
+  const names = state.options.algorithms;
+  const depots = d.compare_depots;
+  const by = {};   // depot -> algo -> summary row
+  for (const depot of depots) {
+    by[depot] = Object.fromEntries(status.summary[depot].rows.map((s) => [s.algo, s]));
+  }
+  const table = $("#demo-table");
+  table.replaceChildren();
+  const head = el("tr");
+  head.append(el("th", {}, "Algorithm"));
+  for (const depot of depots) {
+    head.append(el("th", {}, `${status.summary[depot].name}: mean wait (min)`),
+                el("th", {}, `${status.summary[depot].name}: everyone served (h)`));
+  }
+  table.appendChild(el("thead")).append(head);
+  const body = table.appendChild(el("tbody"));
+  const best = {};
+  for (const depot of depots) {
+    for (const m of ["mean_wait", "completion"]) {
+      best[`${depot}:${m}`] = Math.min(...d.algos.map((a) => by[depot][a][m]));
+    }
+  }
+  for (const a of d.algos) {
+    const tr = el("tr");
+    const name = el("td");
+    const sw = el("span", { class: "swatch" });
+    sw.style.background = algoColor(a);
+    name.append(sw, document.createTextNode(` ${names[a].name}`));
+    tr.append(name);
+    for (const depot of depots) {
+      const s = by[depot][a];
+      for (const [m, scale, dp] of [["mean_wait", 1, 1], ["completion", 60, 2]]) {
+        const cell = el("td", {}, pm(s[m], s[`${m}_ci`], dp, scale));
+        if (Math.abs(s[m] - best[`${depot}:${m}`]) < 1e-9) cell.classList.add("best");
+        tr.append(cell);
+      }
+    }
+    body.append(tr);
+  }
+  // headline: the best designed algorithm against find-then-fetch, at the staging area
+  const here = by[d.depot], far = by[depots.find((x) => x !== d.depot)];
+  const ours = d.algos.filter((a) => a !== d.baseline)
+    .reduce((x, y) => (here[x].mean_wait <= here[y].mean_wait ? x : y));
+  const base = here[d.baseline];
+  $("#demo-headline").textContent =
+    `With supplies staged at ${status.summary[d.depot].name}, people found by ${names[ours].name} wait ` +
+    `${fmt(here[ours].mean_wait)} min on average for their kit, against ${fmt(base.mean_wait)} min with ` +
+    `${names[d.baseline].name}; everyone is served in ${fmt(here[ours].completion / 60, 2)} h ` +
+    `(${fmt(base.completion / 60, 2)} h for ${names[d.baseline].name}, ` +
+    `${fmt(far[ours].completion / 60, 2)} h when supplies come from ${status.summary[depots[0]].name}).`;
+  $("#demo-note").textContent =
+    `${d.drones} drones, ${d.people} people needing aid, the same ${status.config.runs} seeds for every ` +
+    `algorithm and depot (± is the 95% confidence interval). Bold marks the best in each column.`;
+  $("#demo-output").hidden = false;
+}
+
 function setStatus(sel, text, error = false) {
   const node = $(sel);
   node.textContent = text;
@@ -173,7 +270,9 @@ function renderRun() {
   $("#scenario-info").textContent =
     `${sc.k}×${sc.k} grid of ${sc.cell_side_m.toFixed(1)} m cells, ${sc.area_km2.toFixed(2)} km² searched · ` +
     `${(sc.search_time_min * 60).toFixed(1)} s to search a cell · ` +
-    `${sc.trip_time_min.toFixed(1)} min depot round trip from the campus edge · ` +
+    (sc.depot_on_campus
+      ? `supplies staged on campus at ${sc.depot_name} (${sc.trip_time_min.toFixed(1)} min to restock) · `
+      : `${sc.trip_time_min.toFixed(1)} min round trip to ${sc.depot_name} from the campus edge · `) +
     `${state.run.drones} drones, ${state.run.people} people, seed ${state.run.seed}`;
   $("#run-output").hidden = false;
   state.tMax = Math.max(...state.order.map((k) => results[k].metrics.completion), 1e-6);
@@ -185,12 +284,12 @@ function renderRun() {
 }
 
 const METRIC_ROWS = [
-  ["completion", "Everyone served", clock],
-  ["all_found", "Everyone found", clock],
-  ["mean_supplied_at", "Average time to be served", clock],
   ["mean_wait", "Mean wait, found → served (min)", (v) => fmt(v)],
   ["p90_wait", "90th percentile wait (min)", (v) => fmt(v)],
   ["max_wait", "Longest wait (min)", (v) => fmt(v)],
+  ["mean_supplied_at", "Average time to be served", clock],
+  ["completion", "Everyone served", clock],
+  ["all_found", "Everyone found", clock],
   ["trips", "Depot round trips", (v) => fmt(v, 0)],
   ["unused_kits", "Kits fetched but never used", (v) => fmt(v, 0)],
 ];
@@ -541,8 +640,10 @@ function drawReplays() {
     ctx.fillStyle = colors.secondary;
     ctx.font = "11px system-ui, sans-serif";
     ctx.textBaseline = "bottom";
-    ctx.fillText("campus edge", 4, stripTop + rep.strip - 3);
-    const depotLabel = `${sc.depot[0].toUpperCase()}${sc.depot.slice(1)} depot · ${sc.distance_km} km`;
+    ctx.fillText(sc.depot_on_campus ? "staging area" : "campus edge", 4, stripTop + rep.strip - 3);
+    const depotLabel = sc.depot_on_campus
+      ? `restocking at ${sc.depot_name} · ${sc.trip_time_min.toFixed(0)} min`
+      : `${sc.depot_name} depot · ${sc.distance_km} km`;
     ctx.fillText(depotLabel, W - ctx.measureText(depotLabel).width - 4, stripTop + rep.strip - 3);
     // redraw strip drones on top of the strip background
     rep.segs.forEach((segs, idx) => {
@@ -636,7 +737,7 @@ function buildLegend() {
     ["Found, waiting for a drone", (c) => dot(c, css("--critical"))],
     ["Found, drone on the way", (c) => dot(c, css("--warning"))],
     ["Served", (c) => dot(c, css("--good"))],
-    ["Campus exit toward the depot", (c) => { c.fillStyle = css("--text-secondary"); c.fillRect(3, 3, 10, 10); }],
+    ["Depot exit, or the staging area itself", (c) => { c.fillStyle = css("--text-secondary"); c.fillRect(3, 3, 10, 10); }],
     ["Peak-group models: drone colour = group, grey = scavenger", (c) => {
       GROUP_COLORS.slice(0, 3).forEach((g, i) => { c.fillStyle = g; c.fillRect(1 + 5 * i, 4, 4, 8); }); }],
     ["Building outline (real map)", (c) => { c.strokeStyle = css("--building-line"); c.lineWidth = 1; c.strokeRect(3, 3, 10, 10); }],

@@ -8,6 +8,7 @@ Endpoints (JSON):
     GET  /api/options              algorithms, depots, defaults
     POST /api/run                  run one scenario for several algorithms (with replay data)
     POST /api/benchmark            start a benchmark job -> {"job": id}
+    POST /api/demo                 start the depot comparison behind the demo -> {"job": id}
     GET  /api/benchmark/<id>       progress, then summary and per-run rows
     GET  /api/benchmark/<id>.csv   per-run rows as CSV
 Everything else is served from ./web.
@@ -29,11 +30,17 @@ from benchmark import BenchmarkConfig, run_benchmark, summarize_rows
 from continuous_model import CONTINUOUS_ALGORITHMS, STATUSES
 from metrics import METRICS, curves, summarize
 from campus_map import DATA_PATH
-from scenario import CAMPUS_CHOICES, DEPOT_DISTANCE_KM, Scenario
+from scenario import (CAMPUS_CHOICES, DEPOT_CHOICES, DEPOT_DISTANCE_KM, DEPOT_NAMES, STAGING_LONLAT,
+                      Scenario)
 
 WEB_DIR = Path(__file__).parent / "web"
 MAX_RUN_PEOPLE = 5000
 MAX_BENCH_JOBS = 20000
+# the demo: UW map, supplies from Redmond vs staged on campus at Rainier Vista
+DEMO = {"drones": 20, "people": 250, "seed": 0, "campus": "auto", "cell_side": 25.0,
+        "depot": "rainier_vista", "compare_depots": ["redmond", "rainier_vista"],
+        "algos": ["expected", "greedy-density", "peaks-best", "brute"], "baseline": "brute",
+        "runs": 8}
 JOBS: dict[str, dict] = {}
 
 
@@ -54,6 +61,7 @@ def scenario_info(sc: Scenario) -> dict:
         "k": sc.k, "cell_side_m": sc.cell_side_m,
         "area_km2": sc.n_search_cells * sc.cell_area_km2,
         "depot": sc.depot, "distance_km": round(sc.edge_to_depot_km, 1), "depot_point": sc.depot_point,
+        "depot_name": sc.depot_name, "depot_on_campus": sc.depot_on_campus,
         "search_time_min": sc.search_time_min, "trip_time_min": sc.trip_time_min,
         "move_time_min": sc.move_time_min, "map": None,
     }
@@ -106,6 +114,57 @@ def run_scenario(params: dict) -> dict:
             "results": results}
 
 
+def depot_label(key: str) -> str:
+    if key in DEPOT_DISTANCE_KM:
+        return f"{DEPOT_NAMES[key]} ({DEPOT_DISTANCE_KM[key]} km)"
+    where = "EOC, just off campus" if key == "uw_tower" else "on-campus staging"
+    return f"{DEPOT_NAMES[key]} ({where})" if key in STAGING_LONLAT else key
+
+
+def start_job(work_fn, total: int, config: dict) -> str:
+    """Run work_fn(progress) in a thread; it returns (rows, summary)."""
+    job_id = uuid.uuid4().hex[:12]
+    job = {"done": 0, "total": total, "finished": False, "error": None, "config": config}
+    JOBS[job_id] = job
+
+    def progress(done, _total):
+        job["done"] = done
+
+    def work():
+        try:
+            job["rows"], job["summary"] = work_fn(progress)
+        except Exception as exc:  # reported to the page
+            job["error"] = f"{type(exc).__name__}: {exc}"
+        job["finished"] = True
+
+    threading.Thread(target=work, daemon=True).start()
+    return job_id
+
+
+def start_demo(params: dict) -> str:
+    """Same drones, people and seeds for each depot, so the depots compare seed by seed."""
+    d = DEMO | {k: v for k, v in params.items() if k in ("drones", "people", "runs")}
+    cfgs = {depot: BenchmarkConfig(drones=[int(d["drones"])], people=[int(d["people"])],
+                                   runs=int(d["runs"]), algos=list(d["algos"]),
+                                   baseline=d["baseline"], depot=depot,
+                                   campus=_scenario(d).campus)
+            for depot in d["compare_depots"]}
+    per = len(cfgs[d["compare_depots"][0]].jobs())
+
+    def work(progress):
+        rows, summary = [], {}
+        for i, (depot, cfg) in enumerate(cfgs.items()):
+            r = run_benchmark(cfg, progress=lambda done, _t, i=i: progress(i * per + done, 0))
+            for row in r:
+                row["depot"] = depot
+            rows += r
+            summary[depot] = {"name": DEPOT_NAMES[depot],
+                              "rows": summarize_rows(r, d["baseline"])}
+        return rows, summary
+
+    return start_job(work, per * len(cfgs), {k: d[k] for k in ("drones", "people", "runs", "algos")})
+
+
 def start_benchmark(params: dict) -> str:
     cfg = BenchmarkConfig(
         drones=[int(x) for x in params.get("drones", [20])],
@@ -125,24 +184,12 @@ def start_benchmark(params: dict) -> str:
     total = len(cfg.jobs())
     if not total or total > MAX_BENCH_JOBS:
         raise ValueError(f"benchmark must have 1-{MAX_BENCH_JOBS} runs (this one has {total})")
-    job_id = uuid.uuid4().hex[:12]
-    job = {"done": 0, "total": total, "finished": False, "error": None, "config": cfg.__dict__}
-    JOBS[job_id] = job
 
-    def progress(done, _total):
-        job["done"] = done
+    def work(progress):
+        rows = run_benchmark(cfg, progress=progress)
+        return rows, summarize_rows(rows, cfg.baseline)
 
-    def work():
-        try:
-            rows = run_benchmark(cfg, progress=progress)
-            job["rows"] = rows
-            job["summary"] = summarize_rows(rows, cfg.baseline)
-        except Exception as exc:  # reported to the page
-            job["error"] = f"{type(exc).__name__}: {exc}"
-        job["finished"] = True
-
-    threading.Thread(target=work, daemon=True).start()
-    return job_id
+    return start_job(work, total, cfg.__dict__)
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -169,7 +216,9 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({
                 "algorithms": {k: {"name": c.name, "rule": c.rule}
                                for k, c in CONTINUOUS_ALGORITHMS.items()},
-                "depots": {k: v for k, v in DEPOT_DISTANCE_KM.items()},
+                "depots": {k: depot_label(k) for k in DEPOT_CHOICES},
+                "staging_depots": list(STAGING_LONLAT),
+                "demo": DEMO,
                 "metrics": METRICS,
                 "statuses": STATUSES,
                 "map_available": DATA_PATH.exists(),
@@ -207,6 +256,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(_clean(run_scenario(params)))
             if self.path == "/api/benchmark":
                 return self._json({"job": start_benchmark(params)})
+            if self.path == "/api/demo":
+                return self._json({"job": start_demo(params)})
             return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
         except (ValueError, KeyError, TypeError) as exc:
             return self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
