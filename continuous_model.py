@@ -27,6 +27,15 @@ the smaller r. If free drones outnumber unclaimed cells, the surplus rule
 applies as in the discrete model: loaded drones take cells first, empty ones
 fill any left over, the remaining empty drones return.
 
+Search first: if the whole fleet could finish the remaining search in less
+than one round trip T (remaining cells * tau_s / N < T), the balance is
+skipped and empty drones only go back for people already found
+(r = min(free empty, U - F)). Searching is cheap next to a depot trip, so
+holding drones back from a short search only delays finding the last people,
+who then each wait a full trip. ContinuousKeepSearching reads "search first"
+literally instead: in that phase no empty drone goes back (r = 0) until the
+cells run out, trading longer waits for an earlier finish.
+
 With trip_time == search_time and spot_at_end=True every drone stays in sync
 and the rule reduces exactly to the discrete model's.
 
@@ -67,12 +76,13 @@ class Decision:
     U: int
     S: int          # drones searching after the decision
     r: int          # free empty drones sent back
-    surplus: bool
+    mode: str       # "balance" | "search-first" | "surplus" | "fetch-found"
 
 
 class ContinuousModel(DroneSearchModel):
     name = "expected value"
-    rule = "r minimises |H + F + r - (U + E[finds in T])|"
+    rule = "search first if left < T, else min |H+F+r - (U+E[finds in T])|"
+    keep_searching = False  # in the search-first phase: r = 0 instead of U - F
 
     def __init__(self, n_drones: int, grid_size: int, n_people: int,
                  search_time: float = 1.0, trip_time: float = 1.0,
@@ -102,6 +112,10 @@ class ContinuousModel(DroneSearchModel):
         partial = sum((d.until - t) / self.tau for d in self.drones if d.status == "search")
         return self.A * (len(self.unsearched) + partial)
 
+    def search_time_left(self, t: float | None = None) -> float:
+        """Time for the whole fleet to finish the remaining search."""
+        return self.remaining_area(t) / self.A * self.tau / len(self.drones)
+
     def expected_finds(self, searchers: int, area: float) -> float:
         """Expected people found over the next T by `searchers` drones."""
         if area <= EPS or self.n_unfound == 0:
@@ -124,7 +138,11 @@ class ContinuousModel(DroneSearchModel):
             empty_searchers = max(0, cells - (len(free) - len(empty)))
             r = len(empty) - min(len(empty), empty_searchers)
             S = busy + cells
-            surplus = True
+            mode = "surplus"
+        elif self.search_time_left(t) < self.T:
+            r = 0 if self.keep_searching else min(len(empty), max(0, U - F))
+            S = busy + len(free) - r
+            mode = "search-first"
         else:
             best = None
             for r in range(len(empty) + 1):
@@ -133,10 +151,10 @@ class ContinuousModel(DroneSearchModel):
                 if best is None or imbalance < best[0] - 1e-12:
                     best = (imbalance, r, S)
             _, r, S = best
-            surplus = False
+            mode = "balance"
 
         self.decisions.append(Decision(t, self.n_unfound, R, self.expected_finds(S, R),
-                                       H, F, U, S, r, surplus))
+                                       H, F, U, S, r, mode))
         return empty[:r]
 
     # ----------------------------------------------------------------- engine
@@ -247,11 +265,20 @@ class ContinuousFindThenFetch(ContinuousModel):
         R = self.remaining_area(t)
         self.decisions.append(Decision(t, self.n_unfound, R, self.expected_finds(S, R),
                                        sum(d.has_supplies for d in self.drones), F, U, S, r,
-                                       False))
+                                       "fetch-found"))
         return empty[:r]
+
+
+class ContinuousKeepSearching(ContinuousModel):
+    """Expected value, but the search-first phase sends nobody back until the cells run out."""
+
+    name = "keep searching"
+    rule = "r = 0 while search left < T, else expected-value balance"
+    keep_searching = True
 
 
 CONTINUOUS_ALGORITHMS: dict[str, type[ContinuousModel]] = {
     "expected": ContinuousModel,
+    "keep": ContinuousKeepSearching,
     "brute": ContinuousFindThenFetch,
 }

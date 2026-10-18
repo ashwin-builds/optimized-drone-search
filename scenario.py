@@ -71,15 +71,17 @@ class Scenario:
         return dict(grid_size=self.k, cell_area=self.cell_area_km2,
                     search_time=self.search_time_min, trip_time=self.trip_time_min)
 
-    def describe(self) -> str:
+    def describe(self, people: int | None = None) -> str:
+        people = self.people if people is None else people
         return (f"UW Seattle campus, supplies from {self.depot.title()} ({self.distance_km:g} km)\n"
                 f"  grid {self.k}x{self.k} cells of {self.cell_side_m:g} m "
                 f"({self.k ** 2 * self.cell_area_km2:.2f} km^2)\n"
                 f"  search {self.search_time_min:.2f} min/cell, "
                 f"round trip {self.trip_time_min:.1f} min, "
                 f"rho = {self.trip_time_min / self.search_time_min:.1f}\n"
-                f"  people needing aid: {self.people} "
-                f"({self.aid_fraction:.2%} of {self.population:,})")
+                f"  people needing aid: {people}"
+                + (f" ({self.aid_fraction:.2%} of {self.population:,})"
+                   if people == self.people else " (set directly)"))
 
 
 def main():
@@ -100,7 +102,7 @@ def main():
 
     sc = Scenario(depot=args.depot, aid_fraction=args.aid_fraction)
     p = sc.people if args.p is None else args.p
-    print(sc.describe())
+    print(sc.describe(p))
     print(f"  drones: {args.n}, people: {p}, runs: {args.runs}\n")
     print(f"{'algorithm':>16} {'completion (h)':>15} {'wait found->supplied (min)':>27}")
     for M in CONTINUOUS_ALGORITHMS.values():
