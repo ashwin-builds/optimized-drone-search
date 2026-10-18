@@ -42,7 +42,10 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
-from campus_map import DATA_PATH, PeopleLayout, load_grid
+from functools import lru_cache
+
+from campus_map import DATA_PATH, Grid, PeopleLayout, load_grid
+from density import VISITORS_PATH, DensityLayout, DensitySurface
 
 CAMPUS_AREA_M2 = 703 * 4046.86
 CAMPUS_SIDE_M = math.sqrt(CAMPUS_AREA_M2)
@@ -52,6 +55,22 @@ DEPOT_DIRECTION = {"redmond": (0.988, 0.150), "bothell": (0.592, 0.806)}
 
 
 CAMPUS_CHOICES = ("auto", "uw", "square")
+PEOPLE_CHOICES = ("floor", "density")
+
+
+@lru_cache(maxsize=16)
+def _map_surface(map_path: str, cell_side_m: float, depot: str, scale: str) -> DensitySurface:
+    cmap, grid = load_grid(map_path, cell_side_m, depot)
+    return DensitySurface(cmap, grid, VISITORS_PATH, scale=scale)
+
+
+@lru_cache(maxsize=16)
+def _square_surface(k: int) -> DensitySurface:
+    cells = frozenset((x, y) for x in range(k) for y in range(k))
+    grid = Grid(k=k, cell_side_m=1.0, search_cells=cells, building_cells=frozenset(),
+                indoor_weight={}, campus_area_m2=float(k * k), exit_point=(k, k / 2),
+                exit_to_depot_m=0.0)
+    return DensitySurface.uniform(grid)
 
 
 @dataclass
@@ -60,6 +79,9 @@ class Scenario:
     campus: str = "auto"
     map_path: str = str(DATA_PATH)
     indoor_fraction: float = 0.8   # real map: share of people inside buildings
+    people: str = "floor"          # true people: "floor" (PeopleLayout) or "density" (the prior)
+    density_scale: str = "mass"    # prior surface scaling on the real map: "mass" or "peak"
+    search_en_route: bool = True   # search unclaimed cells crossed on the way to a cell
     cell_side_target_m: float = 25.0
     cruise_mps: float = 15.0
     restock_min: float = 5.0
@@ -82,6 +104,14 @@ class Scenario:
     def map_grid(self):
         """(CampusMap, Grid) for the real campus at this cell size."""
         return load_grid(self.map_path, float(self.cell_side_target_m), self.depot)
+
+    @property
+    def density_surface(self) -> DensitySurface:
+        """The searchers' prior: the building surface on the real map, uniform on the square."""
+        if self.uses_map:
+            return _map_surface(self.map_path, float(self.cell_side_target_m), self.depot,
+                                self.density_scale)
+        return _square_surface(self.k)
 
     @property
     def n_search_cells(self) -> int:
@@ -153,7 +183,7 @@ class Scenario:
         return self.cell_side_m / self.cruise_mps / 60
 
     @property
-    def people(self) -> int:
+    def n_people(self) -> int:
         return round(self.population * self.aid_fraction)
 
     def model_kwargs(self) -> dict:
@@ -163,14 +193,21 @@ class Scenario:
                       move_time_per_cell=self.move_time_min, depot_point=self.depot_point,
                       entry_cell=(min(self.k - 1, int(self.depot_point[0])),
                                   min(self.k - 1, int(self.depot_point[1]))))
+        if self.people not in PEOPLE_CHOICES:
+            raise ValueError(f"people must be one of {PEOPLE_CHOICES}")
+        surface = self.density_surface
+        kwargs.update(density=surface, search_en_route=self.search_en_route)
         if self.uses_map:
             grid = self.map_grid[1]
-            kwargs.update(search_cells=grid.search_cells,
-                          people_layout=PeopleLayout(grid, self.indoor_fraction))
+            kwargs.update(search_cells=grid.search_cells)
+        if self.people == "density":
+            kwargs.update(people_layout=DensityLayout(surface.prob))
+        elif self.uses_map:
+            kwargs.update(people_layout=PeopleLayout(self.map_grid[1], self.indoor_fraction))
         return kwargs
 
     def describe(self, people: int | None = None) -> str:
-        people = self.people if people is None else people
+        people = self.n_people if people is None else people
         if self.uses_map:
             cmap, grid = self.map_grid
             where = (f"  map: real UW campus from OpenStreetMap (fetched {cmap.fetched}), "
@@ -191,7 +228,7 @@ class Scenario:
                 f"round trip {self.trip_time_min:.1f} min from the campus edge\n"
                 f"  people needing aid: {people}"
                 + (f" ({self.aid_fraction:.2%} of {self.population:,})"
-                   if people == self.people else " (set directly)"))
+                   if people == self.n_people else " (set directly)"))
 
 
 def main():
@@ -215,7 +252,7 @@ def main():
 
     sc = Scenario(depot=args.depot, aid_fraction=args.aid_fraction,
                   cell_side_target_m=args.cell_side, campus=args.campus)
-    p = sc.people if args.p is None else args.p
+    p = sc.n_people if args.p is None else args.p
     print(sc.describe(p))
     print(f"  drones: {args.n}, people: {p}, runs: {args.runs}\n")
     print(f"{'algorithm':>16} {'completion (h)':>15} {'wait found->supplied (min)':>27}")

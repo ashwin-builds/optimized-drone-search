@@ -18,23 +18,28 @@ its footprint centroid c_b (cell units):
 
     sigma_b = max(min_sigma_cells, sigma_factor * sqrt(footprint_area / pi) / cell_side)
 
-i.e. sigma_factor times the radius of a circle with the footprint's area. The
-floor (0.5 cells by default) stops tiny footprints such as gatehouses from
-becoming needle spikes that fall between cell centres or swamp everything.
+i.e. sigma_factor times the radius of a circle with the footprint's area
+(min_sigma_cells defaults to 0: no floor is needed now that cells are
+integrated rather than sampled).
 
     scale="peak"  (default)  height_b = V_b
     scale="mass"             height_b = V_b / (2 pi sigma_b^2)   (integral = V_b)
 
-Peak scaling gives a building mass V_b * 2 pi sigma_b^2, so large footprints
-get proportionally more; mass scaling makes each building's total exactly its
-visitors (up to the campus edge and the cell-centre sampling).
+Peak scaling gives a building mass M_b = V_b * 2 pi sigma_b^2, so large
+footprints get proportionally more; mass scaling makes each building's total
+exactly M_b = V_b (up to what falls outside the campus).
 
-    raw(x)  = sum_b height_b * exp(-|x - c_b|^2 / (2 sigma_b^2))   at campus cell centres
-    prob(x) = raw(x) / sum over campus cells of raw
+Each cell's value is the surface integrated over the cell square. An
+axis-aligned Gaussian separates, so for the cell [x0, x1] x [y0, y1]:
 
-The sum is taken in log space (logaddexp), so far from every building the
-surface is tiny but never exactly 0; this keeps empty areas from forming
-flat plateaus of false peaks.
+    raw(cell)  = sum_b M_b * (Phi((x1 - cx_b) / sigma_b) - Phi((x0 - cx_b) / sigma_b))
+                           * (Phi((y1 - cy_b) / sigma_b) - Phi((y0 - cy_b) / sigma_b))
+    prob(cell) = raw(cell) / sum over campus cells of raw
+
+(Phi = standard normal CDF.) Everything is computed in log space
+(scipy.special.log_ndtr, logaddexp), so far from every building a cell's
+value is tiny but never exactly 0; this keeps empty areas from forming flat
+plateaus of false peaks.
 
 Daily visitors per building come from, in order:
   1. a row in data/building_visitors.csv whose name equals the OSM name
@@ -73,6 +78,7 @@ from pathlib import Path
 
 import numpy as np
 import shapely
+from scipy.special import log_ndtr
 
 from campus_map import DATA_PATH, CampusMap, Grid, load_grid
 
@@ -118,6 +124,17 @@ def building_type(tag: str | None, name: str | None) -> str:
     if tag in LOW_USE_TAGS:
         return "low_use"
     return "university"
+
+
+def _log_cdf_diff(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """log(Phi(b) - Phi(a)) for a < b, accurate far into both tails."""
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    # work in whichever tail keeps both CDFs small: flip when the interval is right of 0
+    flip = a > 0
+    lo = np.where(flip, -b, a)
+    hi = np.where(flip, -a, b)
+    lhi, llo = log_ndtr(hi), log_ndtr(lo)
+    return lhi + np.log1p(-np.exp(llo - lhi))
 
 
 # ------------------------------------------------------------ visitor table
@@ -174,7 +191,7 @@ class DensitySurface:
     def __init__(self, cmap: CampusMap, grid: Grid,
                  visitors: dict[str, VisitorRow] | Path | str | None = None,
                  scale: str = "peak", sigma_factor: float = 1.0,
-                 min_sigma_cells: float = 0.5, drop_edge_peaks: bool = True):
+                 min_sigma_cells: float = 0.0, drop_edge_peaks: bool = True):
         if scale not in ("peak", "mass"):
             raise ValueError("scale must be 'peak' or 'mass'")
         if sigma_factor <= 0 or min_sigma_cells < 0:
@@ -185,29 +202,45 @@ class DensitySurface:
         self.scale = scale
         self.sigma_factor = sigma_factor
         self.min_sigma_cells = min_sigma_cells
-        self.drop_edge_peaks = drop_edge_peaks
-        self.merged_edge_peaks: list[tuple[int, int]] = []   # edge peak cells removed
-        self.k = k = grid.k
         side = grid.cell_side_m
-        self._cmap = cmap
-
         self.sources = self._resolve_visitors(cmap, visitors, side)
         names = {n for _, n, _ in cmap.buildings if n}
         self.unmatched_rows = sorted(set(visitors) - names)
 
-        # log of the sum of Gaussians at every cell centre, [y, x]
-        centres = np.arange(k) + 0.5
-        X, Y = np.meshgrid(centres, centres, indexing="xy")
+        # log of the per-cell integral of the sum of Gaussians, [y, x]
+        k = grid.k
+        edges = np.arange(k + 1, dtype=float)
         log_raw = np.full((k, k), -np.inf)
         for s in self.sources:
             if s.visitors <= 0:
                 continue
-            log_h = math.log(s.visitors)
-            if scale == "mass":
-                log_h -= math.log(2 * math.pi * s.sigma ** 2)
-            d2 = (X - s.centroid[0]) ** 2 + (Y - s.centroid[1]) ** 2
-            log_raw = np.logaddexp(log_raw, log_h - d2 / (2 * s.sigma ** 2))
+            log_m = math.log(s.visitors)
+            if scale == "peak":
+                log_m += math.log(2 * math.pi * s.sigma ** 2)
+            lx = _log_cdf_diff((edges[:-1] - s.centroid[0]) / s.sigma,
+                               (edges[1:] - s.centroid[0]) / s.sigma)
+            ly = _log_cdf_diff((edges[:-1] - s.centroid[1]) / s.sigma,
+                               (edges[1:] - s.centroid[1]) / s.sigma)
+            log_raw = np.logaddexp(log_raw, log_m + ly[:, None] + lx[None, :])
+        self._build(cmap, grid, log_raw, drop_edge_peaks)
 
+    @classmethod
+    def uniform(cls, grid: Grid, drop_edge_peaks: bool = True) -> "DensitySurface":
+        """Equal probability in every search cell (e.g. the square campus)."""
+        s = cls.__new__(cls)
+        s.scale, s.sigma_factor, s.min_sigma_cells = "uniform", 1.0, 0.0
+        s.sources, s.unmatched_rows = [], []
+        s._build(None, grid, np.zeros((grid.k, grid.k)), drop_edge_peaks)
+        return s
+
+    def _build(self, cmap: CampusMap | None, grid: Grid, log_raw: np.ndarray,
+               drop_edge_peaks: bool) -> None:
+        """Mask, normalise, and find peaks and basins from per-cell log values."""
+        self.grid = grid
+        self._cmap = cmap
+        self.drop_edge_peaks = drop_edge_peaks
+        self.merged_edge_peaks: list[tuple[int, int]] = []   # edge peak cells removed
+        self.k = k = grid.k
         self.mask = np.zeros((k, k), dtype=bool)       # campus cells, [y, x]
         for x, y in grid.search_cells:
             self.mask[y, x] = True
@@ -250,7 +283,7 @@ class DensitySurface:
                 kind = "fallback"
             c = poly.centroid
             radius = math.sqrt(poly.area / math.pi) / side
-            sigma = max(self.min_sigma_cells, self.sigma_factor * radius)
+            sigma = max(self.min_sigma_cells, self.sigma_factor * radius, 1e-6)
             out.append(BuildingSource(i, name, tag, kind, v, (c.x / side, c.y / side), sigma))
         return out
 
@@ -337,6 +370,8 @@ class DensitySurface:
             self.merged_edge_peaks.append(t)
 
     def _buildings_at(self, cell) -> tuple[tuple[str, ...], float]:
+        if self._cmap is None:
+            return (), math.inf
         side = self.grid.cell_side_m
         pt = shapely.Point((cell[0] + 0.5) * side, (cell[1] + 0.5) * side)
         label = lambda i: self._cmap.buildings[i][1] or f"(unnamed {self._cmap.building_tags[i]})"
@@ -365,6 +400,21 @@ class DensitySurface:
         out = [(p, self.remaining_mass(p.id, unsearched)) for p in self.peaks]
         out = [(p, m) for p, m in out if m > min_mass]
         out.sort(key=lambda pm: (-pm[1], pm[0].id))
+        return out
+
+
+class DensityLayout:
+    """Picklable people sampler drawing from a per-cell probability (people="density")."""
+
+    def __init__(self, prob: dict):
+        self.cells = sorted(prob, key=lambda c: (c[1], c[0]))
+        self.cum = list(np.cumsum([prob[c] for c in self.cells]))
+
+    def __call__(self, rng, n: int) -> list[tuple[float, float]]:
+        out = []
+        for _ in range(n):
+            cell = rng.choices(self.cells, cum_weights=self.cum)[0]
+            out.append((cell[0] + rng.random(), cell[1] + rng.random()))
         return out
 
 

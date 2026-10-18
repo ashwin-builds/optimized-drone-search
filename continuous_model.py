@@ -11,16 +11,27 @@ A person is spotted part-way through their cell's search (Person.spot_frac,
 uniform in [0, 1), or at the end with spot_at_end=True). Deliveries are
 instant: the moment someone is spotted, any loaded drone drops supplies.
 
+Prior density. `density` gives each search cell a probability of holding
+people: a DensitySurface (density.py) on the real campus, or uniform when
+omitted. It is the searchers' BELIEF; the true people are placed separately
+(people_layout).
+
 Decision rule (expected value). Whenever drones are free, choose how many of
 the free empty drones to send back, r, minimising
 
     | H + F + r  -  (U + E[finds over the next T]) |
 
     H  loaded drones          F  drones already flying back
-    U  people waiting         E  = n * min(1, S * A * T / (tau_s * R))
-                                   (n unfound, R unsearched area including the
-                                    unsearched part of cells in progress,
-                                    S drones searching)
+    U  people waiting         S  drones searching
+    E  = n * min(1, M_top / M_rem)       (finds="density", the default)
+         n      unfound people
+         M_rem  prior mass still to search: unclaimed cells, cells claimed
+                but not yet searched, and the unsearched part of cells in
+                progress
+         M_top  mass of the S * T / tau_s highest-probability unclaimed cells,
+                i.e. the best cells S drones could sweep in the next T
+    E  = n * min(1, S * A * T / (tau_s * R))   (finds="uniform", the old rule;
+                R is the remaining area - the same thing under a uniform prior)
 
 The horizon is T because a drone sent back now delivers at now + T. Ties go to
 the smaller r. If free drones outnumber unclaimed cells, the surplus rule
@@ -50,8 +61,17 @@ takes (straight-line distance in cells) * move_time_per_cell:
     decision. In the balance equation, en-route drones and the people they
     are flying to cancel out: H counts loaded drones not yet committed, U
     unassigned people.
-  * Searching. Moving into a neighbouring cell is part of the sweep; any
-    distance beyond one cell side is flown first ("transit").
+  * Searching while flying (search_en_route=True, the default). Flying over
+    a cell takes about as long as searching it, so a drone heading for a
+    distant cell searches every still-unclaimed cell its straight line
+    crosses: each is claimed at once, searched for tau_s (with the usual spot
+    events) and removed from `unsearched`. Cells already claimed or searched
+    are flown over at move_time_per_cell per cell of line. The drone's own
+    cell and its target are not part of the flight (the move into a
+    neighbouring cell is part of the sweep). A flight is a fixed list of legs
+    ("search" or "transit"), all scheduled when it starts.
+    With search_en_route=False the old rule applies: any distance beyond one
+    cell side is flown first ("transit"), then the target is searched.
   * Depot trips (depot_point set). A drone first flies to the point on the
     campus edge facing the depot ("exit"), then makes the off-campus round
     trip T, and comes back in at that same point.
@@ -100,6 +120,8 @@ class CDrone:
     search_start: float = 0.0
     deliveries: int = 0
     trips: int = 0
+    route: list = field(default_factory=list)   # legs of the current search flight
+    leg: int = 0                                 # index of the leg in progress
     origin: tuple[float, float] | None = None   # where the current flight started
     target: object = None                       # the Person it is flying to
     since: float = 0.0
@@ -130,8 +152,9 @@ def _dist(a: tuple[float, float], b: tuple[float, float]) -> float:
 
 class ContinuousModel(DroneSearchModel):
     name = "expected value"
-    rule = "r minimises |H + F + r - (U + E[finds in T])|"
+    rule = "r minimises |H + F + r - (U + E[finds in T])|, density-based E"
     keep_searching = False  # r = 0 while the fleet can finish searching within T
+    finds = "density"       # how E[finds in T] is computed: "density" or "uniform"
 
     def __init__(self, n_drones: int, grid_size: int, n_people: int,
                  search_time: float = 1.0, trip_time: float = 1.0,
@@ -139,7 +162,8 @@ class ContinuousModel(DroneSearchModel):
                  spot_at_end: bool = False, entry_cell: tuple[int, int] = (0, 0),
                  move_time_per_cell: float | None = None,
                  depot_point: tuple[float, float] | None = None,
-                 search_cells=None, people_layout=None,
+                 search_cells=None, people_layout=None, density=None,
+                 search_en_route: bool = True, finds: str | None = None,
                  record: bool = False, check: bool = False, seed: int | None = None):
         super().__init__(n_drones, grid_size, n_people, cell_area=cell_area,
                          start_with_supplies=start_with_supplies,
@@ -153,6 +177,11 @@ class ContinuousModel(DroneSearchModel):
         self.depot_point = depot_point
         self.record = record
         self.check = check
+        self.search_en_route = search_en_route
+        if finds is not None:
+            self.finds = finds
+        if self.finds not in ("density", "uniform"):
+            raise ValueError("finds must be 'density' or 'uniform'")
 
         # a real map: only campus cells are searched, people placed by the layout
         self.search_cells = None if search_cells is None else frozenset(search_cells)
@@ -174,6 +203,24 @@ class ContinuousModel(DroneSearchModel):
         if self.search_cells is not None and any(p.cell not in self.search_cells
                                                  for p in self.people):
             raise ValueError("people_layout put someone outside the search area")
+
+        # prior probability per search cell, plus arrays for fast "best cell" queries
+        area_cells = sorted(self.unsearched, key=lambda c: (c[1], c[0]))
+        self.surface = density if hasattr(density, "peaks") else None
+        prior = getattr(density, "prob", density)
+        if prior is None:
+            prior = {c: 1.0 / len(area_cells) for c in area_cells}
+        missing = [c for c in area_cells if c not in prior]
+        if missing:
+            raise ValueError(f"density has no value for {len(missing)} search cells")
+        self.density = {c: float(prior[c]) for c in area_cells}
+        self._cells = area_cells
+        self._cell_index = {c: i for i, c in enumerate(area_cells)}
+        self._cell_xy = np.array([_center(c) for c in area_cells], dtype=float).reshape(-1, 2)
+        self._cell_p = np.array([self.density[c] for c in area_cells], dtype=float)
+        self._alive = np.ones(len(area_cells), dtype=bool)   # still in self.unsearched
+        self._version = 0                                    # bumped on every claim
+        self._top_cache = (-1, None)
 
         start = depot_point if depot_point is not None else _center(entry_cell)
         self.drones = [CDrone(d.id, self._cell_of(start), d.has_supplies, loc=start)
@@ -199,16 +246,48 @@ class ContinuousModel(DroneSearchModel):
         clamp = lambda v: min(self.k - 1, max(0, int(math.floor(v))))
         return (clamp(xy[0]), clamp(xy[1]))
 
-    def remaining_area(self, t: float | None = None) -> float:
-        """Unclaimed cells, cells being flown to, and the unsearched part of cells in progress."""
-        t = self.time if t is None else t
-        partial = 0.0
+    def _pending(self, t: float):
+        """(cell, fraction still to search) for every claimed cell not yet searched."""
         for d in self.drones:
-            if d.status == "transit":
-                partial += 1.0
-            elif d.status == "search":
-                partial += min(1.0, max(0.0, (d.until - t) / self.tau))
-        return self.A * (len(self.unsearched) + partial)
+            if d.status not in ("transit", "search"):
+                continue
+            for i in range(d.leg, len(d.route)):
+                kind, cell, t0, t1 = d.route[i][:4]
+                if kind != "search":
+                    continue
+                frac = 1.0 if i > d.leg or d.status != "search" else \
+                    min(1.0, max(0.0, (t1 - t) / self.tau))
+                yield cell, frac
+
+    def remaining_area(self, t: float | None = None) -> float:
+        """Unclaimed cells, claimed cells still to search, and the unsearched part of cells in progress."""
+        t = self.time if t is None else t
+        return self.A * (len(self.unsearched) + sum(f for _, f in self._pending(t)))
+
+    def remaining_mass(self, t: float | None = None) -> float:
+        """Prior mass of everything still to search (unclaimed + pending)."""
+        t = self.time if t is None else t
+        return float(self._cell_p[self._alive].sum()) + \
+            sum(self.density[c] * f for c, f in self._pending(t))
+
+    def _top_mass(self, n_cells: float) -> float:
+        """Mass of the n_cells highest-probability unclaimed cells (fractional n allowed)."""
+        if self._top_cache[0] != self._version:
+            p = np.sort(self._cell_p[self._alive])[::-1]
+            self._top_cache = (self._version, np.concatenate([[0.0], np.cumsum(p)]))
+        cum = self._top_cache[1]
+        if n_cells >= len(cum) - 1:
+            return float(cum[-1])
+        whole = int(n_cells)
+        return float(cum[whole] + (n_cells - whole) * (cum[whole + 1] - cum[whole]))
+
+    def _claim(self, cell: tuple[int, int]) -> None:
+        """Take a cell out of the unsearched pool (it is now some drone's to search)."""
+        self.unsearched.discard(cell)
+        i = self._cell_index.get(cell)
+        if i is not None and self._alive[i]:
+            self._alive[i] = False
+            self._version += 1
 
     def loaded_available(self) -> int:
         """H: loaded drones not already flying to someone."""
@@ -225,12 +304,23 @@ class ContinuousModel(DroneSearchModel):
         """Time for the whole fleet to finish the remaining search."""
         return self.remaining_area(t) / self.A * self.tau / len(self.drones)
 
-    def expected_finds(self, searchers: int, area: float) -> float:
-        """Expected people found over the next T by `searchers` drones."""
-        if area <= EPS or self.n_unfound == 0:
+    def expected_finds(self, searchers: int, area: float, mass: float | None = None) -> float:
+        """Expected people found over the next T by `searchers` drones.
+
+        finds="density": n * (mass of the best cells they can sweep) / (mass left).
+        finds="uniform": n * (area they can sweep) / (area left).
+        """
+        if self.n_unfound == 0:
             return 0.0
-        swept = searchers * self.A * self.T / self.tau
-        return self.n_unfound * min(1.0, swept / area)
+        if self.finds == "uniform":
+            if area <= EPS:
+                return 0.0
+            swept = searchers * self.A * self.T / self.tau
+            return self.n_unfound * min(1.0, swept / area)
+        mass = self.remaining_mass() if mass is None else mass
+        if mass <= 0:
+            return 0.0
+        return self.n_unfound * min(1.0, self._top_mass(searchers * self.T / self.tau) / mass)
 
     # --------------------------------------------------------------- decision
 
@@ -242,6 +332,7 @@ class ContinuousModel(DroneSearchModel):
         busy = self.searching()
         cells = len(self.unsearched)
         R = self.remaining_area(t)
+        M = self.remaining_mass(t) if self.finds == "density" else None
 
         if len(free) > cells:
             empty_searchers = max(0, cells - (len(free) - len(empty)))
@@ -256,13 +347,13 @@ class ContinuousModel(DroneSearchModel):
             best = None
             for r in range(len(empty) + 1):
                 S = busy + len(free) - r
-                imbalance = abs(H + F + r - (U + self.expected_finds(S, R)))
+                imbalance = abs(H + F + r - (U + self.expected_finds(S, R, M)))
                 if best is None or imbalance < best[0] - 1e-12:
                     best = (imbalance, r, S)
             _, r, S = best
             mode = "balance"
 
-        self.decisions.append(Decision(t, self.n_unfound, R, self.expected_finds(S, R),
+        self.decisions.append(Decision(t, self.n_unfound, R, self.expected_finds(S, R, M),
                                        H, F, U, S, r, mode))
         return empty[:r]
 
@@ -303,13 +394,17 @@ class ContinuousModel(DroneSearchModel):
     # ----------------------------------------------------------------- events
 
     def _handle(self, kind: str, obj, t: float) -> None:
-        if kind == "transit_done":
-            obj.loc, obj.pos = _center(obj.cell), obj.cell
-            self._set_status(obj, "search", t, obj.search_start + self.tau)
-        elif kind == "search_done":
-            self.searched.add(obj.cell)
-            obj.cell = None
-            self._set_status(obj, "idle", t)
+        if kind == "leg_done":
+            drone, i = obj
+            leg_kind, cell, _, _, _, xy1 = drone.route[i]
+            drone.loc = xy1
+            if leg_kind == "search":
+                self.searched.add(cell)
+            if i + 1 < len(drone.route):
+                self._start_leg(drone, i + 1, t)
+            else:
+                drone.pos, drone.cell, drone.route, drone.leg = cell, None, [], 0
+                self._set_status(drone, "idle", t)
         elif kind == "exit_done":
             obj.loc = self.depot_point
             obj.pos = self._cell_of(self.depot_point)
@@ -393,25 +488,88 @@ class ContinuousModel(DroneSearchModel):
             self._set_status(drone, "exit", t, until, to=self.depot_point)
             self._push(until, "exit_done", drone)
 
-    def _start_search(self, drone: CDrone, cell: tuple[int, int], t: float) -> None:
-        self.unsearched.discard(cell)
-        drone.cell = cell
-        travel = 0.0
-        if self.move_time is not None:
-            travel = max(0.0, _dist(drone.loc, _center(cell)) - 1.0) * self.move_time
-        drone.search_start = start = t + travel
-        if travel > EPS:
+    def _crossed(self, p: tuple[float, float], q: tuple[float, float]):
+        """Cells the segment p -> q passes through, in order, as (cell, entry, exit)
+        points; a line through a cell corner steps diagonally."""
+        x, y = int(math.floor(p[0])), int(math.floor(p[1]))
+        dx, dy = q[0] - p[0], q[1] - p[1]
+        sx, sy = (1 if dx > 0 else -1), (1 if dy > 0 else -1)
+        tx = ((x + (sx > 0)) - p[0]) / dx if dx else math.inf
+        ty = ((y + (sy > 0)) - p[1]) / dy if dy else math.inf
+        ddx, ddy = (abs(1 / dx) if dx else math.inf), (abs(1 / dy) if dy else math.inf)
+        at = lambda s: (p[0] + s * dx, p[1] + s * dy)
+        s, out = 0.0, []
+        while True:
+            nxt = min(tx, ty, 1.0)
+            out.append(((x, y), at(s), at(nxt)))
+            if nxt >= 1.0 - 1e-12:
+                return out
+            if abs(tx - ty) < 1e-12:
+                x, y, tx, ty = x + sx, y + sy, tx + ddx, ty + ddy
+            elif tx < ty:
+                x, tx = x + sx, tx + ddx
+            else:
+                y, ty = y + sy, ty + ddy
+            s = nxt
+
+    def _can_claim_en_route(self, drone: CDrone, cell: tuple[int, int]) -> bool:
+        """Whether `drone` may search `cell` while flying over it (hook for subclasses)."""
+        return True
+
+    def _route(self, drone: CDrone, target: tuple[int, int], t: float) -> list[tuple]:
+        """Legs (kind, cell, t0, t1, xy0, xy1) of a flight to search `target`."""
+        legs, now, here = [], t, drone.loc
+        end = _center(target)
+        if self.move_time is not None and not self.search_en_route:
+            travel = max(0.0, _dist(here, end) - 1.0) * self.move_time
+            if travel > EPS:
+                legs.append(("transit", target, now, now + travel, here, end))
+                now += travel
+        elif self.move_time is not None:
+            crossed = self._crossed(here, end)[1:-1]   # not the drone's own cell or the target
+            for i, (cell, a, b) in enumerate(crossed):
+                xy0 = here if i == 0 else a
+                xy1 = end if i == len(crossed) - 1 else b
+                if cell in self.unsearched and self._can_claim_en_route(drone, cell):
+                    legs.append(("search", cell, now, now + self.tau, xy0, xy1))
+                    now += self.tau
+                else:
+                    dur = _dist(a, b) * self.move_time
+                    if legs and legs[-1][0] == "transit":     # merge consecutive fly-overs
+                        k_, c_, t0, _, p0, _ = legs[-1]
+                        legs[-1] = (k_, c_, t0, now + dur, p0, xy1)
+                    elif dur > EPS:
+                        legs.append(("transit", target, now, now + dur, xy0, xy1))
+                    now += dur
+        legs.append(("search", target, now, now + self.tau, end, end))
+        return legs
+
+    def _start_leg(self, drone: CDrone, i: int, t: float) -> None:
+        kind, cell, _, t1, xy0, xy1 = drone.route[i]
+        drone.leg, drone.cell = i, cell
+        if kind == "transit":
             drone.origin = drone.loc
-            self._set_status(drone, "transit", t, start, to=_center(cell))
-            self._push(start, "transit_done", drone)
         else:
-            drone.pos, drone.loc = cell, _center(cell)
-            self._set_status(drone, "search", t, start + self.tau)
-        self._push(start + self.tau, "search_done", drone)
-        self.cell_windows[cell] = (start, start + self.tau)
-        for person in self.people_in_cell.get(cell, []):
-            frac = 1.0 if self.spot_at_end else person.spot_frac
-            self._push(start + frac * self.tau, "spot", person)
+            drone.pos = cell
+        self._set_status(drone, kind, t, t1, to=xy1)
+
+    def _start_search(self, drone: CDrone, cell: tuple[int, int], t: float) -> None:
+        """Fly to `cell` (searching on the way if enabled) and search it."""
+        drone.route = self._route(drone, cell, t)
+        for kind, c, t0, t1, _, _ in drone.route:
+            if kind == "search":
+                self._claim(c)
+        drone.search_start = drone.route[-1][2]
+        # all leg ends and spots are scheduled now (and in this order, which
+        # keeps same-time ties identical to the single-cell flights)
+        for i, (kind, c, t0, t1, _, _) in enumerate(drone.route):
+            self._push(t1, "leg_done", (drone, i))
+            if kind == "search":
+                self.cell_windows[c] = (t0, t1)
+                for person in self.people_in_cell.get(c, []):
+                    frac = 1.0 if self.spot_at_end else person.spot_frac
+                    self._push(t0 + frac * self.tau, "spot", person)
+        self._start_leg(drone, 0, t)
 
     def _dispatch(self, t: float) -> None:
         if self.move_time is not None:
@@ -459,9 +617,14 @@ class ContinuousModel(DroneSearchModel):
             if d.status not in STATUSES:
                 fail(f"drone {d.id} has unknown status {d.status}")
             if d.status in ("transit", "search"):
-                if d.cell is None or d.cell in self.unsearched:
+                if d.cell is None or d.cell in self.unsearched or not d.route:
                     fail(f"drone {d.id} searching an unclaimed cell")
-                claimed.append(d.cell)
+                for i in range(d.leg, len(d.route)):
+                    kind, cell = d.route[i][:2]
+                    if kind == "search":
+                        if cell in self.unsearched or cell in self.searched:
+                            fail(f"drone {d.id} has cell {cell} queued but it is not claimed")
+                        claimed.append(cell)
             if d.status == "deliver" and (not d.has_supplies or d.target is None):
                 fail(f"drone {d.id} delivering without a kit or a target")
             if d.status in ("exit", "return") and d.has_supplies:
@@ -470,6 +633,8 @@ class ContinuousModel(DroneSearchModel):
                 fail(f"drone {d.id} is {d.status} past its end time")
         if len(set(claimed)) != len(claimed):
             fail("two drones searching the same cell")
+        if int(self._alive.sum()) != len(self.unsearched):   # every claim goes through _claim
+            fail("unsearched set and the cell arrays disagree")
 
     # ------------------------------------------------------------------- run
 
@@ -544,8 +709,35 @@ class ContinuousKeepSearching(ContinuousModel):
     keep_searching = True
 
 
+class ContinuousExpectedUniform(ContinuousModel):
+    """The expected-value rule with the old uniform E (area swept / area left), for reference."""
+
+    name = "expected (uniform E)"
+    rule = "r minimises |H + F + r - (U + E[finds in T])|, uniform E"
+    finds = "uniform"
+
+
+class ContinuousGreedyDensity(ContinuousModel):
+    """Each free drone takes the unclaimed cell with the best prior probability per
+    unit of time, prob / (travel + tau); depot runs as in the expected-value rule."""
+
+    name = "greedy density"
+    rule = "cell maximising prob / (travel + tau); expected-value depot runs"
+
+    def _pick_cell(self, drone: CDrone):
+        idx = np.flatnonzero(self._alive)
+        if len(idx) == 0:
+            return None
+        d = self._cell_xy[idx] - np.asarray(drone.loc)
+        travel = np.hypot(d[:, 0], d[:, 1]) * (self.move_time or 0.0)
+        rate = self._cell_p[idx] / (travel + self.tau)
+        return self._cells[idx[int(np.argmax(rate))]]   # ties: first in (row, column) order
+
+
 CONTINUOUS_ALGORITHMS: dict[str, type[ContinuousModel]] = {
     "expected": ContinuousModel,
+    "expected-uniform": ContinuousExpectedUniform,
     "keep": ContinuousKeepSearching,
     "brute": ContinuousFindThenFetch,
+    "greedy-density": ContinuousGreedyDensity,
 }

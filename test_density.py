@@ -84,7 +84,11 @@ def test_single_building_gives_one_peak_at_its_centroid():
     assert p.buildings == ("Hall",) and p.distance_m == 0.0
     assert p.basin == frozenset(s.prob)          # the whole campus drains to it
     assert p.mass == pytest.approx(1.0)
-    assert p.height == pytest.approx(800, rel=0.01)   # peak scaling: height = visitors
+    # height is the peak cell's integral: V * 2 pi sigma^2 * (cell share in x) * (in y);
+    # the centroid sits at the cell centre, so each share is erf(0.5 / (sigma sqrt 2))
+    sigma = math.sqrt(10_000 / math.pi) / 25
+    share = math.erf(0.5 / (sigma * math.sqrt(2)))
+    assert p.height == pytest.approx(800 * 2 * math.pi * sigma ** 2 * share ** 2, rel=1e-9)
 
 
 def test_two_far_apart_buildings_give_two_peaks_and_basins():
@@ -124,12 +128,14 @@ def test_peak_scaling_favours_wide_buildings_mass_scaling_does_not():
     assert sum(mass.raw.values()) == pytest.approx(2000, rel=0.02)
 
 
-def test_sigma_follows_footprint_and_factor_with_a_floor():
+def test_sigma_follows_footprint_and_factor_with_an_optional_floor():
     blds = [(400, 250, 500, 350, "Hall", "university", 3), (100, 100, 105, 105, "Hut", "shed", 1)]
     s = surface(blds, table(Hall=1, Hut=1), sigma_factor=2.0)
     hall, hut = s.sources
     assert hall.sigma == pytest.approx(2.0 * math.sqrt(10_000 / math.pi) / 25, rel=1e-3)
-    assert hut.sigma == 0.5                      # floored
+    assert hut.sigma == pytest.approx(2.0 * math.sqrt(25 / math.pi) / 25, rel=1e-3)  # no floor
+    floored = surface(blds, table(Hall=1, Hut=1), sigma_factor=2.0, min_sigma_cells=0.5)
+    assert floored.sources[1].sigma == 0.5
     assert hall.centroid == pytest.approx((18.0, 12.0), abs=1e-3)
 
 
@@ -325,3 +331,29 @@ def test_level_overrides_feed_floor_area_estimates():
     assert row["daily_visitors"] == round(10_000 * LEVEL_OVERRIDES["McMahon Hall"]
                                           * TYPE_DENSITY["university"])
     assert "assumed" not in row["source"]
+
+
+def test_cells_hold_the_integral_of_the_gaussian():
+    # compare a cell against brute-force numerical integration of the Gaussian
+    b = (400, 250, 437.5, 287.5)                # centroid (418.75, 268.75) m, off-centre
+    s = surface([(*b, "Hall", "university", 3)], table(Hall=1000), scale="mass")
+    src_ = s.sources[0]
+    cx, cy, sg = *src_.centroid, src_.sigma
+    for cell in [(16, 10), (17, 10), (16, 11), (20, 14)]:
+        xs = cell[0] + (np.arange(400) + 0.5) / 400
+        ys = cell[1] + (np.arange(400) + 0.5) / 400
+        X, Y = np.meshgrid(xs, ys)
+        f = 1000 / (2 * np.pi * sg ** 2) * np.exp(-((X - cx) ** 2 + (Y - cy) ** 2) / (2 * sg ** 2))
+        assert s.raw[cell] == pytest.approx(f.mean(), rel=1e-4)
+    # mass scaling: the whole campus holds (almost exactly) the visitor count
+    assert sum(s.raw.values()) == pytest.approx(1000, rel=1e-9)
+    # far cells are tiny but never exactly zero
+    assert min(s.raw.values()) >= 0 and (s.log_raw[s.mask] > -np.inf).all()
+
+
+def test_uniform_surface():
+    from density import DensitySurface
+    cmap, grid = make_map([], w=200, h=100)
+    s = DensitySurface.uniform(grid)
+    assert np.allclose(list(s.prob.values()), 1 / len(grid.search_cells), rtol=1e-12, atol=0)
+    assert len(s.peaks) == 1 and s.peaks[0].basin == frozenset(grid.search_cells)

@@ -17,7 +17,8 @@ CONFIGS = [(1, 5, 3), (5, 20, 15), (10, 8, 40), (20, 20, 80), (6, 12, 40)]
 def test_reduces_to_discrete_model_when_trip_equals_search(discrete, continuous, n, k, p):
     for seed in range(15):
         expected = discrete(n, k, p, seed=seed).run()
-        got = continuous(n, k, p, spot_at_end=True, seed=seed).run()
+        got = continuous(n, k, p, spot_at_end=True, search_en_route=False, finds="uniform",
+                         seed=seed).run()
         assert got == pytest.approx(expected)
 
 
@@ -67,10 +68,10 @@ def test_uw_scenario_numbers():
     assert sc.k * sc.cell_side_m == pytest.approx(math.sqrt(703 * 4046.86))
     assert sc.search_time_min == pytest.approx(sc.cell_side_m ** 2 / 150 / 60)
     assert sc.trip_time_min == pytest.approx(2 * (13_800 - sc.edge_offset_m) / 15 / 60 + 5)
-    assert sc.people == 250
+    assert sc.n_people == 250
     # the depot entry point is on the east edge for Redmond
     assert sc.depot_point[0] == pytest.approx(sc.k, abs=1e-5)
-    model = ContinuousModel(20, n_people=sc.people, seed=0, check=True, **sc.model_kwargs())
+    model = ContinuousModel(20, n_people=sc.n_people, seed=0, check=True, **sc.model_kwargs())
     assert model.run() > 0
 
 

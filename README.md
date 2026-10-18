@@ -17,7 +17,7 @@ pytest
 
 | File | What it is |
 |---|---|
-| `continuous_model.py` | Event-driven simulator and the three algorithms (`expected`, `keep`, `brute`) |
+| `continuous_model.py` | Event-driven simulator and the algorithms (`expected`, `expected-uniform`, `keep`, `brute`, `greedy-density`) |
 | `scenario.py` | UW scenario: depot distances, drone speeds; real map or square approximation |
 | `campus_map.py` | Downloads the UW boundary and building footprints from OpenStreetMap and rasterises them |
 | `density.py`, `data/building_visitors.csv` | Prior density surface of where people are (the searcher's belief), its peaks and basins |
@@ -63,4 +63,37 @@ cell belongs to the basin its steepest ascent reaches, and
 ```bash
 python density.py info --scale mass          # peaks, top 15 by mass, data sources
 python density.py show --save density.png    # heatmap, peaks, basin boundaries
+```
+
+## Simulator defaults and algorithms
+
+Every model now:
+
+* **searches while flying** (`search_en_route=True`): a drone heading for a
+  distant cell searches every unclaimed cell its straight line crosses, taking
+  `tau` per cell; cells already searched or claimed are flown over at cruise
+  speed. `search_en_route=False` restores the old fly-then-search rule.
+* **uses the density surface for expected value**: E[finds in T] =
+  unfound × (prior mass of the best cells S drones can sweep in T) / (prior
+  mass left). `finds="uniform"` (or the `expected-uniform` algorithm) keeps
+  the old area-based rule.
+* **knows the prior**: `Scenario` passes the density surface (mass scaling,
+  cells integrated) on the real map and a uniform one on the square campus.
+
+`Scenario(people="floor")` (default) places the true people by building floor
+area, so the prior is imperfect; `people="density"` samples them from the prior
+itself, so it is exactly right.
+
+| Algorithm | What it does |
+|---|---|
+| `expected` | depot runs balance \|H + F + r − (U + E)\|; drones search the nearest unclaimed cell |
+| `expected-uniform` | the same with the old uniform E, for reference |
+| `keep` | expected value, but nobody returns while the fleet can finish searching within a trip |
+| `brute` | find-then-fetch: fetch only for people already found |
+| `greedy-density` | each free drone takes the cell with the best prob / (travel + tau); expected-value depot runs |
+
+```bash
+python benchmark.py --drones 10 20 50 --people 60 250 --runs 30 \
+    --algos expected greedy-density "expected:search_en_route=False" \
+    --baseline expected --compare-to greedy-density --placement density
 ```

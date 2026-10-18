@@ -339,7 +339,7 @@ def main():
 
     sc = Scenario(depot=args.depot, aid_fraction=args.aid_fraction,
                   cell_side_target_m=args.cell_side, campus=args.campus)
-    p = sc.people if args.p is None else args.p
+    p = sc.n_people if args.p is None else args.p
     keys = []
     for key in args.algo:
         for k in (["expected", "brute"] if key == "both" else [key]):
