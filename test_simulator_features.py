@@ -89,9 +89,9 @@ def test_metrics_are_consistent(key):
     c = curves(model)
     assert m["all_served"] == pytest.approx(max(c["supplied"]))
     assert m["all_found"] == pytest.approx(max(c["found"]))
-    # completion: the ceil(0.8 * expected)-th find (expected = the true count here)
-    assert m["completion"] == pytest.approx(c["found"][math.ceil(0.8 * len(model.people)) - 1])
-    assert m["completion"] <= m["all_found"] <= m["all_served"]
+    # completion: the ceil(0.8 * expected)-th person served (expected = the true count here)
+    assert m["completion"] == pytest.approx(c["supplied"][math.ceil(0.8 * len(model.people)) - 1])
+    assert m["completion"] <= m["all_served"] and m["all_found"] <= m["all_served"]
     assert m["mean_wait"] <= m["p90_wait"] <= m["max_wait"]
     assert sum(m[f"share_{s}"] for s in STATUSES) == pytest.approx(1.0)
     # every drone's time adds up to the run length
@@ -305,11 +305,11 @@ def test_planner_uses_the_expected_count_not_the_true_one():
     assert c.believed_unfound == 0 and c.expected_finds(10, c.remaining_area()) == 0
 
 
-def test_completion_counts_finds_against_the_expected_count():
+def test_completion_counts_people_served_against_the_expected_count():
     model = uw(ContinuousModel, p=40, expected_people=30, seed=2)
     model.run()
-    found = curves(model)["found"]
-    assert summarize(model)["completion"] == pytest.approx(found[24 - 1])   # ceil(0.8 * 30)
+    served = curves(model)["supplied"]
+    assert summarize(model)["completion"] == pytest.approx(served[24 - 1])   # ceil(0.8 * 30)
     assert summarize(model)["n_people"] == 40
 
 

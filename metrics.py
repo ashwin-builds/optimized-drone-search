@@ -14,11 +14,11 @@ import statistics
 
 from continuous_model import STATUSES, ContinuousModel
 
-# completion: the time COMPLETION_FRAC of the expected head count has been found
+# completion: the time COMPLETION_FRAC of the expected head count has been served (given a kit)
 COMPLETION_FRAC = 0.8
 
 METRICS = {
-    "completion": f"time {COMPLETION_FRAC:.0%} of the expected number of people are found",
+    "completion": f"time {COMPLETION_FRAC:.0%} of the expected number of people are served",
     "all_served": "time the last person is supplied",
     "n_people": "people in this run",
     "all_found": "time the last person is found",
@@ -43,12 +43,12 @@ def _percentile(values: list[float], q: float) -> float:
 
 
 def completion_time(model: ContinuousModel, frac: float = COMPLETION_FRAC) -> float:
-    """Time the ceil(frac * expected_people)-th person is found (the last find if fewer)."""
-    found = sorted(p.found_step for p in model.people if p.found_step is not None)
-    if not found:
+    """Time the ceil(frac * expected_people)-th person is served (the last one if fewer)."""
+    served = sorted(p.supplied_step for p in model.people if p.supplied_step is not None)
+    if not served:
         return 0.0
     target = max(1, math.ceil(frac * model.expected_people - 1e-9))
-    return found[min(target, len(found)) - 1]
+    return served[min(target, len(served)) - 1]
 
 
 def summarize(model: ContinuousModel) -> dict:

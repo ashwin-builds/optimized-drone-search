@@ -210,7 +210,7 @@ function renderDemo(status) {
   head.append(el("th", {}, "Algorithm"));
   for (const depot of depots) {
     head.append(el("th", {}, `${status.summary[depot].name}: mean wait (min)`),
-                el("th", {}, `${status.summary[depot].name}: ${pct()} found`));
+                el("th", {}, `${status.summary[depot].name}: ${pct()} served`));
   }
   table.appendChild(el("thead")).append(head);
   const body = table.appendChild(el("tbody"));
@@ -246,7 +246,7 @@ function renderDemo(status) {
   $("#demo-headline").textContent =
     `With supplies staged at ${status.summary[d.depot].name}, people found by ${names[ours].name} wait ` +
     `${fmt(here[ours].mean_wait)} min on average for their kit, against ${fmt(base.mean_wait)} min with ` +
-    `${names[d.baseline].name}. ${pct()} of the expected people are found after ${clock(here[ours].completion)} ` +
+    `${names[d.baseline].name}. ${pct()} of the expected people have a kit after ${clock(here[ours].completion)} ` +
     `(${clock(base.completion)} for ${names[d.baseline].name}, ` +
     `${clock(far[ours].completion)} when supplies come from ${status.summary[depots[0]].name}).`;
   $("#demo-note").textContent =
@@ -292,7 +292,7 @@ const METRIC_ROWS = [
   ["p90_wait", "90th percentile wait (min)", (v) => fmt(v)],
   ["max_wait", "Longest wait (min)", (v) => fmt(v)],
   ["mean_supplied_at", "Average time to be served", clock],
-  ["completion", "80% of expected people found", clock],
+  ["completion", "80% of expected people served", clock],
   ["all_served", "Everyone served", clock],
   ["all_found", "Everyone found", clock],
   ["trips", "Depot round trips", (v) => fmt(v, 0)],
@@ -820,9 +820,9 @@ function renderBench() {
   const table = $("#bench-table");
   table.replaceChildren();
   const head = el("tr");
-  for (const h of ["Algorithm", `${pct()} found (h)`, "Mean wait (min)", "Longest wait (min)",
+  for (const h of ["Algorithm", `${pct()} served (h)`, "Mean wait (min)", "Longest wait (min)",
                    "Everyone found (h)", "Unused kits",
-                   `Δ ${pct()} found vs ${names[config.baseline].name} (min)`, "Δ mean wait (min)", "Faster in"]) {
+                   `Δ ${pct()} served vs ${names[config.baseline].name} (min)`, "Δ mean wait (min)", "Faster in"]) {
     head.append(el("th", {}, h));
   }
   table.appendChild(el("thead")).append(head);
@@ -867,7 +867,7 @@ function renderBenchCharts() {
   const algos = [...new Set(rows.map((s) => s.algo))];
   const names = state.options.algorithms;
   for (const [id, metric, label, scale] of [
-    ["chart-bench-completion", "completion", `${pct()} of expected people found (hours)`, 60],
+    ["chart-bench-completion", "completion", `${pct()} of expected people served (hours)`, 60],
     ["chart-bench-wait", "mean_wait", "Mean wait (minutes)", 1],
   ]) {
     state.charts[id]?.destroy();

@@ -125,7 +125,7 @@ Every algorithm and depot sees the same draw for a seed, and the planners only
 know the mean: E uses (expected people − people found so far).
 
 **Completion** is the time 80% of the expected number of people have been
-found (`metrics.COMPLETION_FRAC`). The time everyone is served is reported
+served, i.e. found and given a kit (`metrics.COMPLETION_FRAC`). The time everyone is served is reported
 separately as `all_served`.
 
 ## Peak-group search (`peaks_model.py`)

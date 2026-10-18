@@ -300,7 +300,7 @@ def main():
     print(sc.describe(p))
     print(f"  drones: {args.n}, expected people: {p} (each run draws its own count), "
           f"runs: {args.runs}\n")
-    print(f"{'algorithm':>18} {f'{COMPLETION_FRAC:.0%} found (h)':>15} "
+    print(f"{'algorithm':>18} {f'{COMPLETION_FRAC:.0%} served (h)':>15} "
           f"{'wait found->supplied (min)':>27}")
     for M in CONTINUOUS_ALGORITHMS.values():
         done, waits = [], []

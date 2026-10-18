@@ -190,7 +190,7 @@ def print_summary(summary: list[dict], baseline: str) -> None:
         if (s["drones"], s["people"]) != last:
             last = (s["drones"], s["people"])
             print(f"\n{s['drones']} drones, {s['people']} expected people, {s['runs']} runs")
-            print(f"  {'algorithm':<44} {'80% found (h)':>17} {'mean wait (min)':>17} "
+            print(f"  {'algorithm':<44} {'80% served (h)':>17} {'mean wait (min)':>17} "
                   f"{'max wait':>9} {'all found':>10} {'unused':>7}   vs {name(baseline)}")
         vs = ""
         if "completion_diff" in s:
