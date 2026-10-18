@@ -210,3 +210,43 @@ def test_level_overrides_replace_missing_or_wrong_osm_levels(map_path):
     # people placement weights now use 11 floors for it
     grid = cmap.grid(25.0, "redmond")
     assert grid.indoor_weight[(3, 3)] == pytest.approx(625 * 11)
+
+
+@real_map
+@pytest.mark.parametrize("depot", ["rainier_vista", "hub_yard", "denny_yard", "parrington_lawn"])
+def test_staging_area_on_campus_is_its_own_exit(depot):
+    sc = Scenario(campus="uw", depot=depot)
+    cmap, grid = sc.map_grid
+    dx, dy = cmap.lonlat_to_m(*campus_map.DEPOT_LONLAT[depot])
+    assert grid.exit_to_depot_m == 0.0 and sc.depot_on_campus
+    assert grid.exit_point == pytest.approx((dx / 25, dy / 25))
+    assert sc.trip_time_min == pytest.approx(sc.restock_min)
+    assert sc.model_kwargs()["entry_cell"] in grid.search_cells
+
+
+@real_map
+def test_uw_tower_is_just_off_campus():
+    sc = Scenario(campus="uw", depot="uw_tower")
+    assert not sc.depot_on_campus
+    assert 100 < sc.map_grid[1].exit_to_depot_m < 600
+    assert sc.restock_min < sc.trip_time_min < sc.restock_min + 2
+
+
+def test_staging_areas_need_the_real_map():
+    with pytest.raises(ValueError, match="real campus map"):
+        Scenario(campus="square", depot="rainier_vista")
+    with pytest.raises(ValueError, match="depot must be one of"):
+        Scenario(campus="square", depot="nowhere")
+
+
+@real_map
+@pytest.mark.parametrize("key", ["expected", "brute", "peaks-best"])
+def test_staging_area_runs_with_checks_and_beats_redmond(key):
+    done = {}
+    for depot in ("redmond", "rainier_vista"):
+        sc = Scenario(campus="uw", depot=depot)
+        model = CONTINUOUS_ALGORITHMS[key](15, n_people=80, seed=1, check=True,
+                                           **sc.model_kwargs())
+        done[depot] = model.run()
+        assert all(p.supplied_step is not None for p in model.people)
+    assert done["rainier_vista"] < done["redmond"]

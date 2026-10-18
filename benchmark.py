@@ -26,14 +26,15 @@ from dataclasses import asdict, dataclass, field
 
 from continuous_model import CONTINUOUS_ALGORITHMS
 from metrics import summarize
-from scenario import CAMPUS_CHOICES, DEPOT_DISTANCE_KM, PEOPLE_CHOICES, Scenario
+from scenario import CAMPUS_CHOICES, DEPOT_CHOICES, PEOPLE_CHOICES, Scenario, draw_people
 
 # two-sided 95% Student t critical values by degrees of freedom
 _T95 = [(1, 12.706), (2, 4.303), (3, 3.182), (4, 2.776), (5, 2.571), (6, 2.447), (7, 2.365),
         (8, 2.306), (9, 2.262), (10, 2.228), (12, 2.179), (15, 2.131), (20, 2.086),
         (25, 2.060), (30, 2.042), (40, 2.021), (60, 2.000), (120, 1.980)]
 
-SUMMARY_METRICS = ["completion", "mean_wait", "max_wait", "all_found", "unused_kits", "trips"]
+SUMMARY_METRICS = ["completion", "mean_wait", "max_wait", "all_found", "all_served", "n_people",
+                   "unused_kits", "trips"]
 
 
 def t95(df: int) -> float:
@@ -101,8 +102,9 @@ def run_one(job: tuple) -> dict:
     algo, n, p, seed, depot, cell_side, campus, placement, check = job
     key, overrides = parse_spec(algo)
     sc = Scenario(depot=depot, cell_side_target_m=cell_side, campus=campus, people=placement)
-    model = CONTINUOUS_ALGORITHMS[key](n, n_people=p, seed=seed, check=check,
-                                       **(sc.model_kwargs() | overrides))
+    # p is the expected head count; each seed draws its own (the same for every algorithm)
+    model = CONTINUOUS_ALGORITHMS[key](n, n_people=draw_people(p, seed), expected_people=p,
+                                       seed=seed, check=check, **(sc.model_kwargs() | overrides))
     model.run()
     return {"algo": algo, "drones": n, "people": p, "seed": seed, "placement": placement,
             **summarize(model)}
@@ -129,7 +131,7 @@ def run_benchmark(cfg: BenchmarkConfig, workers: int | None = None, progress=Non
     return rows
 
 
-PAIRED_METRICS = ("completion", "mean_wait", "max_wait", "all_found")
+PAIRED_METRICS = ("completion", "mean_wait", "max_wait", "all_found", "all_served")
 
 
 def summarize_rows(rows: list[dict], baseline: str = "brute",
@@ -187,8 +189,8 @@ def print_summary(summary: list[dict], baseline: str) -> None:
     for s in summary:
         if (s["drones"], s["people"]) != last:
             last = (s["drones"], s["people"])
-            print(f"\n{s['drones']} drones, {s['people']} people, {s['runs']} runs")
-            print(f"  {'algorithm':<44} {'completion (h)':>17} {'mean wait (min)':>17} "
+            print(f"\n{s['drones']} drones, {s['people']} expected people, {s['runs']} runs")
+            print(f"  {'algorithm':<44} {'80% served (h)':>17} {'mean wait (min)':>17} "
                   f"{'max wait':>9} {'all found':>10} {'unused':>7}   vs {name(baseline)}")
         vs = ""
         if "completion_diff" in s:
@@ -232,7 +234,7 @@ def main():
     parser.add_argument("--compare-to", nargs="*", default=[],
                         help="extra algorithms to report paired differences against")
     parser.add_argument("--baseline", default="brute")
-    parser.add_argument("--depot", choices=sorted(DEPOT_DISTANCE_KM), default="redmond")
+    parser.add_argument("--depot", choices=DEPOT_CHOICES, default="redmond")
     parser.add_argument("--cell-side", type=float, default=25.0)
     parser.add_argument("--campus", choices=CAMPUS_CHOICES, default="auto",
                         help="real UW map, square approximation, or auto (map if downloaded)")

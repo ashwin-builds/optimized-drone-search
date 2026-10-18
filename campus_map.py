@@ -19,7 +19,8 @@ simulation's square grid:
                    doesn't say); the rest are outdoors,
                    spread evenly over campus cells that are not buildings
   * depot exit     where the straight line from the campus centre to the
-                   depot crosses the campus boundary
+                   depot crosses the campus boundary; a depot on campus (a
+                   staging area) is its own exit, with nothing to fly off campus
 """
 
 from __future__ import annotations
@@ -47,6 +48,15 @@ OVERPASS_URLS = ["https://overpass-api.de/api/interpreter",
 UW_BBOX = (47.643, -122.322, 47.664, -122.293)
 # depots (lon, lat): UW Bothell campus and downtown Redmond
 DEPOT_LONLAT = {"redmond": (-122.1215, 47.6740), "bothell": (-122.1906, 47.7589)}
+# Staging areas near the Seattle campus. UW EH&S lists Mass Assembly Areas (Rainier Vista,
+# HUB Yard, Denny Yard, Parrington Lawn, ...) that "may be used during a campus-wide
+# emergency ... to provide staging for relief supplies"; the Emergency Operations Center
+# has been in UW Tower (Building C), just west of campus, since 2011. Positions are
+# approximate (placed by eye against the buildings on the map), good to ~50 m.
+STAGING_LONLAT = {"rainier_vista": (-122.3075, 47.6525), "hub_yard": (-122.3063, 47.6551),
+                  "denny_yard": (-122.3086, 47.6577), "parrington_lawn": (-122.3100, 47.6568),
+                  "uw_tower": (-122.3147, 47.6608)}
+DEPOT_LONLAT.update(STAGING_LONLAT)
 DEFAULT_LEVELS = 2.0
 # Level counts that OpenStreetMap has wrong or missing, by building name.
 LEVEL_OVERRIDES = {"McMahon Hall": 11.0}
@@ -244,6 +254,11 @@ class CampusMap:
                     weight[cell] = weight.get(cell, 0.0) + share
 
         dx, dy = self.lonlat_to_m(*DEPOT_LONLAT[depot])
+        if self.campus.contains(Point(dx, dy)):   # staging area on campus: no off-campus leg
+            return Grid(k=k, cell_side_m=cell_side_m, search_cells=frozenset(search),
+                        building_cells=frozenset(weight), indoor_weight=weight,
+                        campus_area_m2=self.campus.area,
+                        exit_point=(dx / cell_side_m, dy / cell_side_m), exit_to_depot_m=0.0)
         centre = self.campus.centroid
         crossing = LineString([(centre.x, centre.y), (dx, dy)]).intersection(self.campus.boundary)
         pts = [crossing] if isinstance(crossing, Point) else list(getattr(crossing, "geoms", []))
