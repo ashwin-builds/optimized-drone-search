@@ -16,8 +16,8 @@ remaining_mass is the prior over the basin's cells still unclaimed, so
 exhaustion is derived from what has been searched (by anyone), never stored;
 a peak scavengers have already cleared is therefore never picked again.
 
-Group sizes (size_strategy), with m = max(1, n // 10):
-  fixed    m groups of 10 drones (fewer if n < 10); leftover drones scavenge
+Group sizes (size_strategy), with m = max(1, n // group_size), group_size = 10:
+  fixed    m groups of group_size drones (fewer if n is smaller); leftovers scavenge
   mass     m groups sharing all n drones in proportion to peak mass, >= 2 each
   reserve  scavenger_share of the drones scavenge from the start; the rest
            are shared as in "mass"
@@ -130,11 +130,11 @@ class PeakGroupModel(ContinuousModel):
 
     def __init__(self, *args, size_strategy: str | None = None, rejoin: str | None = None,
                  k_frac: float | None = None, scavenger_share: float | None = None,
-                 split_rule: str | None = None, **kwargs):
+                 split_rule: str | None = None, group_size: int | None = None, **kwargs):
         super().__init__(*args, **kwargs)
         for name, value in (("size_strategy", size_strategy), ("rejoin", rejoin),
                             ("k_frac", k_frac), ("scavenger_share", scavenger_share),
-                            ("split_rule", split_rule)):
+                            ("split_rule", split_rule), ("group_size", group_size)):
             if value is not None:
                 setattr(self, name, value)
         if self.size_strategy not in SIZE_STRATEGIES or self.rejoin not in REJOIN_MODES \
