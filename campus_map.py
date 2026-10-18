@@ -187,12 +187,16 @@ class CampusMap:
         self.lon0, self.lat0 = minx, miny       # origin at the south-west corner
         self.campus = self._to_m(geom_ll)
         self.buildings = []
+        self.building_tags = []    # OSM building=* value, parallel to self.buildings
+        self.building_levels_known = []   # False where levels is the DEFAULT_LEVELS guess
         for f in feats:
             if f["properties"].get("role") != "building":
                 continue
             g = self._to_m(shape(f["geometry"]))
             levels = f["properties"].get("levels") or DEFAULT_LEVELS
             self.buildings.append((g, f["properties"].get("name"), float(levels)))
+            self.building_tags.append(f["properties"].get("building"))
+            self.building_levels_known.append(bool(f["properties"].get("levels")))
         self.width_m = self.campus.bounds[2]
         self.height_m = self.campus.bounds[3]
 

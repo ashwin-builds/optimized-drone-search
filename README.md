@@ -20,6 +20,7 @@ pytest
 | `continuous_model.py` | Event-driven simulator and the three algorithms (`expected`, `keep`, `brute`) |
 | `scenario.py` | UW scenario: depot distances, drone speeds; real map or square approximation |
 | `campus_map.py` | Downloads the UW boundary and building footprints from OpenStreetMap and rasterises them |
+| `density.py`, `data/building_visitors.csv` | Prior density surface of where people are (the searcher's belief), its peaks and basins |
 | `metrics.py` | Per-run metrics and found/served curves |
 | `benchmark.py` | Seed-paired sweeps with 95% confidence intervals |
 | `server.py`, `web/` | Local dashboard (replay, time curves, metrics, benchmarks) |
@@ -41,3 +42,25 @@ approximation.
 
 Map data © OpenStreetMap contributors, available under the
 [Open Database License](https://www.openstreetmap.org/copyright).
+
+## Density surface
+
+`density.py` builds the searcher's prior belief of where people are, from
+public building data only (it never looks at the simulation's true people).
+Each building is a 2-D Gaussian at its footprint centroid, with σ equal to the
+footprint's equivalent radius (times `--sigma-factor`), scaled by its daily
+visitors from `data/building_visitors.csv`. Measured figures (library gate
+counts, residence hall beds, HUB footfall) are marked `is_estimate=false`;
+everything else is floor area × a per-type density and says so. Buildings
+not in the CSV get a low fallback density.
+
+`--scale peak` makes each Gaussian's height the visitor count (large
+footprints get proportionally more mass); `--scale mass` makes its integral
+the visitor count. Peaks are cells higher than all 8 campus neighbours; every
+cell belongs to the basin its steepest ascent reaches, and
+`remaining_mass(peak, unsearched)` is a basin's probability not yet searched.
+
+```bash
+python density.py info --scale mass          # peaks, top 15 by mass, data sources
+python density.py show --save density.png    # heatmap, peaks, basin boundaries
+```

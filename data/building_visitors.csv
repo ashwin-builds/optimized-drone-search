@@ -1,0 +1,166 @@
+name,daily_visitors,source,is_estimate
+Odegaard Undergraduate Library,2134,"UW Libraries FY2025 fact sheet: 779,000 annual visits / 365 = 2,134 per day (annual average) https://lib.uw.edu/wp-content/uploads/2025-FACT-SHEET.pdf",false
+Suzzallo Library,2096,"UW Libraries FY2025: 1,270,000 annual visits to Suzzallo + Allen combined / 365 = 3,479 per day; split 60.2% Suzzallo by the 2011-12 gate report (Suzzallo 1,315,894 of 2,184,284) https://lib.uw.edu/wp-content/uploads/2025-FACT-SHEET.pdf ; https://digital.lib.washington.edu/researchworks/handle/1773/19785",true
+Allen Library,1383,"UW Libraries FY2025: 1,270,000 annual visits to Suzzallo + Allen combined / 365 = 3,479 per day; Allen gets the remaining 39.8% by the 2011-12 gate report split https://lib.uw.edu/wp-content/uploads/2025-FACT-SHEET.pdf",true
+Husky Union Building,6400,"Crosscut (2010): the HUB 'welcomes about 6,400 people daily'; reported before the 2012 renovation and expansion, so possibly out of date https://crosscut.com/2010/04/udubs-hub-will-shutting-down-for-two-years",false
+Kane Hall,5705,"seat counts are real: KNE 130 = 720, KNE 120 = 440, KNE 110 = 230, KNE 210 = 240 (1,630 seats; https://eventservices.uw.edu/rental-rates , https://www.washington.edu/classroom/KNE+130); assumed 5 class sessions a day at 70% full",true
+University of Washington Medical Center - Montlake,5149,"4,641 full-time personnel + 508 average daily inpatient census (FREIDA, https://freida.ama-assn.org/institution/540209); excludes outpatients and visitors, and not every staff member is in each day",true
+Cedar West,197,"Cedar Apartments 344 beds (UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures) split between Cedar West and Cedar East by OSM floor area (12,337 vs 9,183 m^2)",true
+Cedar East,147,"Cedar Apartments 344 beds (UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures) split between Cedar West and Cedar East by OSM floor area (12,337 vs 9,183 m^2)",true
+Alder Hall,663,"663 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
+Elm Hall,584,"584 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
+Hansee Hall,331,"331 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
+Lander Hall,683,"683 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
+Maple Hall,917,"917 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
+McCarty Hall,970,"970 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
+McMahon Hall,1032,"1032 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
+Oak Hall,380,"380 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
+Poplar Hall,297,"297 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
+Terry Hall,350,"350 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
+Oliver Hall,565,"565 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
+Spratlen Hall,549,"549 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
+Aerodynamics Laboratory,16,estimate: 198 m^2 floor area (OSM footprint x 1 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Aerospace Engineering and Research Building (AERB),298,estimate: 3724 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Anderson Hall,272,estimate: 3396 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Aquatic & Fishery Sciences,1287,estimate: 16086 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Architecture Hall,376,estimate: 4706 m^2 floor area (OSM footprint x 3 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Art Building,776,estimate: 9702 m^2 floor area (OSM footprint x 3 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Atmospheric Sciences-Geophysics Building,366,estimate: 4580 m^2 floor area (OSM footprint x 6 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Bagley Hall,962,estimate: 12028 m^2 floor area (OSM footprint x 3 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Bank of America Executive Education Center,228,estimate: 2853 m^2 floor area (OSM footprint x 5 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Benjamin Hall Building,953,estimate: 11909 m^2 floor area (OSM footprint x 6 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Benson Hall,326,estimate: 4073 m^2 floor area (OSM footprint x 3 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Bill & Melinda Gates Center,509,"estimate: 6361 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Bloedel Hall,535,estimate: 6686 m^2 floor area (OSM footprint x 3 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Brooklyn Trail Building,149,"estimate: 1867 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=yes)",true
+Brotman Baty Surgery Pavilion,942,"estimate: 8562 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.11 visitors/m^2/day for type 'hospital' (OSM building=hospital)",true
+Burke Museum of Natural History and Culture,889,estimate: 11109 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Center on Human Development and Disability Clinic,258,"estimate: 3223 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Center on Human Development and Disability South,120,"estimate: 1501 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=yes)",true
+Chemistry Building,838,estimate: 10469 m^2 floor area (OSM footprint x 5 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Chemistry Library Building,374,estimate: 3113 m^2 floor area (OSM footprint x 2 levels) x 0.12 visitors/m^2/day for type 'library' (OSM building=university),true
+Child Care Center,77,"estimate: 967 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=yes)",true
+"Clarence S. ""Hec"" Edmundson Pavilion",1282,"estimate: 21363 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.06 visitors/m^2/day for type 'sports' (OSM building=yes)",true
+Clark Hall,176,estimate: 2202 m^2 floor area (OSM footprint x 3 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Commodore-Duchess Apartments,311,estimate: 10372 m^2 floor area (OSM footprint x 9 levels) x 0.03 visitors/m^2/day for type 'apartments' (OSM building=apartments),true
+Communications Building,290,"estimate: 3619 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Community Design Center,49,"estimate: 612 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Condon Hall,1257,estimate: 15711 m^2 floor area (OSM footprint x 7 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Conibear Shellhouse,223,"estimate: 3719 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.06 visitors/m^2/day for type 'sports' (OSM building=yes)",true
+Cunningham Hall,42,estimate: 527 m^2 floor area (OSM footprint x 2 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Cyclotron Building,51,estimate: 636 m^2 floor area (OSM footprint x 1 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Cyclotron Shop,82,estimate: 1026 m^2 floor area (OSM footprint x 2 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Dempsey Hall,503,estimate: 6285 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Dempsey Indoor,1131,"estimate: 18850 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.06 visitors/m^2/day for type 'sports' (OSM building=yes)",true
+Denny Hall,650,estimate: 8125 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+E,245,estimate: 6991 m^2 floor area (OSM footprint x 8 levels) x 0.035 visitors/m^2/day for type 'dormitory' (OSM building=dormitory),true
+Eagleson Hall,97,estimate: 1218 m^2 floor area (OSM footprint x 2 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Electrical and Computer Engineering Building,1121,estimate: 14012 m^2 floor area (OSM footprint x 5 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Engineering Annex,340,estimate: 4254 m^2 floor area (OSM footprint x 3 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Engineering Library,456,estimate: 3799 m^2 floor area (OSM footprint x 5 levels) x 0.12 visitors/m^2/day for type 'library' (OSM building=yes),true
+Environmental Safety Office Building,42,"estimate: 530 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Environmental Safety Storage Building,100,"estimate: 1249 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=yes)",true
+Ethnic Cultural Center,261,estimate: 3257 m^2 floor area (OSM footprint x 3 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Ethnic Cultural Theater,69,"estimate: 866 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Fisheries Research and Teaching,182,"estimate: 2269 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Fleet Services,86,"estimate: 1076 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Floyd and Delores Jones Playhouse,121,"estimate: 1511 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Fluke Hall,442,"estimate: 5526 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Foster Business Library,309,"estimate: 2572 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.12 visitors/m^2/day for type 'library' (OSM building=yes)",true
+Founders Hall,744,estimate: 9296 m^2 floor area (OSM footprint x 5 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Gerberding Hall,469,estimate: 5859 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Golf Driving Range Building,48,estimate: 605 m^2 floor area (OSM footprint x 1 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Gould Hall,831,estimate: 10383 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=yes),true
+Gowen Hall,382,estimate: 4780 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Graves Annex,350,"estimate: 4372 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=yes)",true
+Graves Hall,229,"estimate: 2865 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=yes)",true
+Guggenheim Annex,31,estimate: 385 m^2 floor area (OSM footprint x 1 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Guggenheim Hall,552,estimate: 6900 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Guthrie Hall,356,estimate: 4452 m^2 floor area (OSM footprint x 3 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+H,24,"estimate: 787 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.03 visitors/m^2/day for type 'apartments' (OSM building=apartments)",true
+Hans Rosling Center,2364,estimate: 29554 m^2 floor area (OSM footprint x 9 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Haring Center,691,"estimate: 8634 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=yes)",true
+Harris Hydraulics Laboratory,132,"estimate: 1654 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Health Sciences Education Building,515,estimate: 6441 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Henderson Hall,913,estimate: 11408 m^2 floor area (OSM footprint x 7 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Hitchcock Hall,676,estimate: 8447 m^2 floor area (OSM footprint x 5 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Hughes Penthouse Theater,116,estimate: 1451 m^2 floor area (OSM footprint x 2 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Husky Health Center,270,"estimate: 3380 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Hutchinson Hall,806,estimate: 10080 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+IC Annex,21,"estimate: 268 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+IMA Building,2665,estimate: 44412 m^2 floor area (OSM footprint x 4 levels) x 0.06 visitors/m^2/day for type 'sports' (OSM building=yes),true
+Instructional Center,46,"estimate: 578 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Interdisciplinary Engineering Building,707,estimate: 8840 m^2 floor area (OSM footprint x 5 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+J,76,estimate: 2532 m^2 floor area (OSM footprint x 4 levels) x 0.03 visitors/m^2/day for type 'apartments' (OSM building=apartments),true
+John M. Wallace Hall,216,estimate: 2697 m^2 floor area (OSM footprint x 2 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Johnson Hall,853,estimate: 10656 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+K,92,estimate: 3050 m^2 floor area (OSM footprint x 4 levels) x 0.03 visitors/m^2/day for type 'apartments' (OSM building=apartments),true
+Kincaid Hall,197,"estimate: 2460 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Kirsten Wind Tunnel,120,"estimate: 1504 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+L,139,estimate: 4630 m^2 floor area (OSM footprint x 4 levels) x 0.03 visitors/m^2/day for type 'apartments' (OSM building=apartments),true
+Lewis Hall,143,estimate: 1786 m^2 floor area (OSM footprint x 3 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Life Sciences Building,1890,estimate: 23628 m^2 floor area (OSM footprint x 6 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Light Reign,7,estimate: 88 m^2 floor area (OSM footprint x 2 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=yes),true
+Loew Hall,423,estimate: 5293 m^2 floor area (OSM footprint x 3 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+M,45,"estimate: 1501 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.03 visitors/m^2/day for type 'apartments' (OSM building=apartments)",true
+Magnuson Health Sciences Center,3517,"estimate: 43964 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Marine Sciences Building,168,"estimate: 2098 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Marine Studies Building,241,"estimate: 3018 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Mary Gates Hall,1473,estimate: 18412 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Meany Hall,1164,estimate: 14551 m^2 floor area (OSM footprint x 3 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Mechanical Engineering Building,393,"estimate: 4912 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Miller Hall,456,estimate: 5705 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Molecular Engineering and Sciences,276,estimate: 3447 m^2 floor area (OSM footprint x 3 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+More Hall,389,"estimate: 4864 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Mueller Hall,132,"estimate: 1655 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Music Building,444,estimate: 5547 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+NanoES Building,450,estimate: 5627 m^2 floor area (OSM footprint x 5 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Nordstrom Tennis Center,516,"estimate: 8603 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.06 visitors/m^2/day for type 'sports' (OSM building=yes)",true
+North Physics Laboratory,613,estimate: 7668 m^2 floor area (OSM footprint x 2 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Northlake Building,168,estimate: 2103 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Ocean Research Building #2,30,estimate: 376 m^2 floor area (OSM footprint x 2 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Ocean Sciences Building,784,estimate: 9805 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Oceanography Building,116,"estimate: 1455 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Oceanography Dock Building,11,estimate: 138 m^2 floor area (OSM footprint x 1 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Oceanography Teaching Building,309,estimate: 3865 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Paccar Hall,1578,estimate: 19721 m^2 floor area (OSM footprint x 6 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Padelford Hall,313,"estimate: 3916 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Parrington Hall,327,estimate: 4081 m^2 floor area (OSM footprint x 3 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Paul G. Allen Center,1172,estimate: 14649 m^2 floor area (OSM footprint x 6 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Pavilion Pool,150,"estimate: 2494 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.06 visitors/m^2/day for type 'sports' (OSM building=yes)",true
+Physics / Astronomy Building,303,"estimate: 3788 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Physics / Astronomy Tower,96,"estimate: 1201 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Physics/Astronomy Auditorium,291,"estimate: 3636 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Plant Operations Annex 3,32,"estimate: 401 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=yes)",true
+Plant Operations Annex 4,77,"estimate: 967 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Portage Bay Building,562,"estimate: 7025 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Publications Services Building,484,estimate: 6053 m^2 floor area (OSM footprint x 3 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Purchasing and Accounting Building,154,"estimate: 1921 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=yes)",true
+Raitt Hall,471,estimate: 5885 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Roberts Annex,28,"estimate: 355 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=yes)",true
+Roberts Hall,263,estimate: 3291 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Savery Hall,795,estimate: 9933 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Schmitz Hall,535,estimate: 10693 m^2 floor area (OSM footprint x 4 levels) x 0.05 visitors/m^2/day for type 'office' (OSM building=office),true
+Sieg Building,406,estimate: 5074 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Smith Hall,516,estimate: 6445 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Social Work Speech and Hearing Sciences Building,758,estimate: 9474 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+South Campus Center,519,"estimate: 6481 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Theodore Jacobson Observatory,21,estimate: 264 m^2 floor area (OSM footprint x 2 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Thomson Hall,228,estimate: 2851 m^2 floor area (OSM footprint x 3 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Transportation Services,66,"estimate: 828 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=yes)",true
+University of Washington,92,estimate: 1148 m^2 floor area (OSM footprint x 2 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=train_station),true
+University of Washington Center for Anxiety and Trauma Stress,49,"estimate: 615 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=yes)",true
+University of Washington Club,169,estimate: 2108 m^2 floor area (OSM footprint x 2 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+University of Washington Drama Scene Shop,92,"estimate: 1154 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+University of Washington Plant Services Building,1036,estimate: 12948 m^2 floor area (OSM footprint x 2 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+University of Washington Police Department,216,estimate: 2699 m^2 floor area (OSM footprint x 3 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=yes),true
+Wayne Glittinger Team Building,9,"estimate: 938 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.01 visitors/m^2/day for type 'stadium' (OSM building=stadium)",true
+Wilcox Hall,216,"estimate: 2699 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+William H. Foege Genome Sciences Building,1871,estimate: 23381 m^2 floor area (OSM footprint x 5 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+William H. Gates Hall,1866,estimate: 23323 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
+Wilson Annex,72,"estimate: 903 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=yes)",true
+Wilson Ceramic Laboratory,45,"estimate: 561 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Winkenwerder Annex,11,"estimate: 142 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=yes)",true
+Winkenwerder Hall,218,"estimate: 2726 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.08 visitors/m^2/day for type 'university' (OSM building=university)",true
+Women's Fastpitch Softball Building,14,"estimate: 1402 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.01 visitors/m^2/day for type 'stadium' (OSM building=stadium)",true
+wǝɫǝbʔaltxʷ – Intellectual House,65,estimate: 814 m^2 floor area (OSM footprint x 1 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
