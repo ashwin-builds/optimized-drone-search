@@ -107,7 +107,9 @@ async function init() {
   }));
 
   $("#run-form").addEventListener("submit", onRun);
-  $("#demo-run").addEventListener("click", onDemo);
+  for (const btn of document.querySelectorAll("[data-demo]")) {
+    btn.addEventListener("click", () => onDemo(btn.dataset.demo));
+  }
   $("#bench-form").addEventListener("submit", onBench);
   $("#play").addEventListener("click", togglePlay);
   $("#scrub").addEventListener("input", (e) => {
@@ -164,18 +166,19 @@ async function runScenario(params) {
 
 /* -------------------------------------------------------------------- demo */
 
-async function onDemo() {
-  const d = state.options.demo;
+async function onDemo(preset) {
+  const d = state.options.demos[preset];
   const form = $("#run-form");
   // fill the scenario form so the replay below is the demo's own run
   for (const k of ["drones", "people", "seed", "depot", "campus", "cell_side"]) form.elements[k].value = d[k];
   for (const box of form.querySelectorAll("input[name=algos]")) box.checked = d.algos.includes(box.value);
-  const btn = $("#demo-run");
-  btn.disabled = true;
+  $("#speed").value = String(d.speed);
+  const buttons = document.querySelectorAll("[data-demo]");
+  buttons.forEach((b) => { b.disabled = true; });
   const out = $("#demo-output");
   out.hidden = true;
   try {
-    const job = api("/api/demo", {});   // depot comparison runs while the replay renders
+    const job = api("/api/demo", { preset });   // depot comparison runs while the replay renders
     await runScenario(formValues(form));
     const { job: id } = await job;
     for (;;) {
@@ -183,7 +186,7 @@ async function onDemo() {
       setStatus("#demo-status", `Comparing depots over ${d.runs} seeds… ${status.done} / ${status.total} runs`);
       if (status.finished) {
         if (status.error) throw new Error(status.error);
-        renderDemo(status);
+        renderDemo(d, status);
         setStatus("#demo-status", "");
         break;
       }
@@ -192,12 +195,11 @@ async function onDemo() {
   } catch (err) {
     setStatus("#demo-status", err.message, true);
   } finally {
-    btn.disabled = false;
+    buttons.forEach((b) => { b.disabled = false; });
   }
 }
 
-function renderDemo(status) {
-  const d = state.options.demo;
+function renderDemo(d, status) {
   const names = state.options.algorithms;
   const depots = d.compare_depots;
   const by = {};   // depot -> algo -> summary row
@@ -210,13 +212,14 @@ function renderDemo(status) {
   head.append(el("th", {}, "Algorithm"));
   for (const depot of depots) {
     head.append(el("th", {}, `${status.summary[depot].name}: mean wait (min)`),
+                el("th", {}, `${status.summary[depot].name}: longest wait`),
                 el("th", {}, `${status.summary[depot].name}: ${pct()} served`));
   }
   table.appendChild(el("thead")).append(head);
   const body = table.appendChild(el("tbody"));
   const best = {};
   for (const depot of depots) {
-    for (const m of ["mean_wait", "completion"]) {
+    for (const m of ["mean_wait", "max_wait", "completion"]) {
       best[`${depot}:${m}`] = Math.min(...d.algos.map((a) => by[depot][a][m]));
     }
   }
@@ -230,6 +233,7 @@ function renderDemo(status) {
     for (const depot of depots) {
       const s = by[depot][a];
       for (const [m, show] of [["mean_wait", (v, ci) => pm(v, ci, 1)],
+                               ["max_wait", (v) => clock(v)],
                                ["completion", (v, ci) => `${clock(v)} ± ${fmt(ci)} min`]]) {
         const cell = el("td", {}, show(s[m], s[`${m}_ci`]));
         if (Math.abs(s[m] - best[`${depot}:${m}`]) < 1e-9) cell.classList.add("best");
@@ -238,17 +242,19 @@ function renderDemo(status) {
     }
     body.append(tr);
   }
-  // headline: the best designed algorithm against find-then-fetch, at the staging area
-  const here = by[d.depot], far = by[depots.find((x) => x !== d.depot)];
+  // headline: the best designed algorithm against find-then-fetch, at the demo's depot
+  const here = by[d.depot];
   const ours = d.algos.filter((a) => a !== d.baseline)
     .reduce((x, y) => (here[x].mean_wait <= here[y].mean_wait ? x : y));
   const base = here[d.baseline];
+  const where = state.options.staging_depots.includes(d.depot)
+    ? `staged at ${status.summary[d.depot].name}` : `flown in from ${status.summary[d.depot].name}`;
   $("#demo-headline").textContent =
-    `With supplies staged at ${status.summary[d.depot].name}, people found by ${names[ours].name} wait ` +
+    `With supplies ${where}, people found by ${names[ours].name} wait ` +
     `${fmt(here[ours].mean_wait)} min on average for their kit, against ${fmt(base.mean_wait)} min with ` +
-    `${names[d.baseline].name}. ${pct()} of the expected people have a kit after ${clock(here[ours].completion)} ` +
-    `(${clock(base.completion)} for ${names[d.baseline].name}, ` +
-    `${clock(far[ours].completion)} when supplies come from ${status.summary[depots[0]].name}).`;
+    `${names[d.baseline].name}; the longest wait is ${clock(here[ours].max_wait)} against ` +
+    `${clock(base.max_wait)}. ${pct()} of the expected people have a kit after ` +
+    `${clock(here[ours].completion)} (${clock(base.completion)} for ${names[d.baseline].name}).`;
   $("#demo-note").textContent =
     `${d.drones} drones, ${d.people} people expected to need aid (each seed draws its own count), ` +
     `the same ${status.config.runs} seeds for every ` +

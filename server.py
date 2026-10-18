@@ -8,7 +8,7 @@ Endpoints (JSON):
     GET  /api/options              algorithms, depots, defaults
     POST /api/run                  run one scenario for several algorithms (with replay data)
     POST /api/benchmark            start a benchmark job -> {"job": id}
-    POST /api/demo                 start the depot comparison behind the demo -> {"job": id}
+    POST /api/demo                 start a demo's depot comparison ({"preset": key}) -> {"job": id}
     GET  /api/benchmark/<id>       progress, then summary and per-run rows
     GET  /api/benchmark/<id>.csv   per-run rows as CSV
 Everything else is served from ./web.
@@ -36,11 +36,17 @@ from scenario import (CAMPUS_CHOICES, DEPOT_CHOICES, DEPOT_DISTANCE_KM, DEPOT_NA
 WEB_DIR = Path(__file__).parent / "web"
 MAX_RUN_PEOPLE = 5000
 MAX_BENCH_JOBS = 20000
-# the demo: UW map, supplies from Redmond vs staged on campus at Rainier Vista
-DEMO = {"drones": 20, "people": 250, "seed": 0, "campus": "auto", "cell_side": 25.0,
-        "depot": "rainier_vista", "compare_depots": ["redmond", "rainier_vista"],
-        "algos": ["expected", "peaks-best", "brute"], "baseline": "brute",
-        "runs": 8}
+# the demos: UW map, a replay at `depot`, and a seed-paired comparison of Redmond with
+# supplies staged on campus at Rainier Vista. speed = suggested replay speed (min/s).
+_DEMO_BASE = {"seed": 0, "campus": "auto", "cell_side": 25.0,
+              "compare_depots": ["redmond", "rainier_vista"],
+              "algos": ["expected", "peaks-best", "brute"], "baseline": "brute", "runs": 8}
+DEMOS = {
+    "staged": _DEMO_BASE | {"label": "Staged on campus", "drones": 20, "people": 60,
+                            "depot": "rainier_vista", "speed": 2},
+    "redmond": _DEMO_BASE | {"label": "Flown from Redmond", "drones": 10, "people": 250,
+                             "depot": "redmond", "speed": 60},
+}
 JOBS: dict[str, dict] = {}
 
 
@@ -144,7 +150,10 @@ def start_job(work_fn, total: int, config: dict) -> str:
 
 def start_demo(params: dict) -> str:
     """Same drones, people and seeds for each depot, so the depots compare seed by seed."""
-    d = DEMO | {k: v for k, v in params.items() if k in ("drones", "people", "runs")}
+    preset = params.get("preset", "staged")
+    if preset not in DEMOS:
+        raise ValueError(f"preset must be one of {sorted(DEMOS)}")
+    d = DEMOS[preset] | {k: v for k, v in params.items() if k in ("drones", "people", "runs")}
     cfgs = {depot: BenchmarkConfig(drones=[int(d["drones"])], people=[int(d["people"])],
                                    runs=int(d["runs"]), algos=list(d["algos"]),
                                    baseline=d["baseline"], depot=depot,
@@ -219,7 +228,7 @@ class Handler(SimpleHTTPRequestHandler):
                                for k, c in CONTINUOUS_ALGORITHMS.items()},
                 "depots": {k: depot_label(k) for k in DEPOT_CHOICES},
                 "staging_depots": list(STAGING_LONLAT),
-                "demo": DEMO,
+                "demos": DEMOS,
                 "completion_frac": COMPLETION_FRAC,
                 "metrics": METRICS,
                 "statuses": STATUSES,

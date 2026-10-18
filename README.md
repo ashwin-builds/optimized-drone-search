@@ -53,9 +53,11 @@ supplies, and `uw_tower` is beside the Emergency Operations Center just west of 
 Positions are approximate (about 50 m). An on-campus depot is its own exit, so a depot
 run is the flight across campus plus the 5 min restock; these depots need the real map.
 
-**Run demo** on the dashboard runs 20 drones / 250 people on the UW map with supplies at
-Rainier Vista (the replay), and compares Redmond with Rainier Vista over 8 seeds for
-`expected`, `peaks-best` and find-then-fetch, leading with mean wait.
+The dashboard has two demo buttons. **Staged on campus** runs 20 drones / 60
+expected people with supplies at Rainier Vista; **Flown from Redmond** runs 10 drones /
+250 expected people with supplies from Redmond. Each replays its own depot and compares
+Redmond with Rainier Vista over 8 seeds for `expected`, `peaks-best` and find-then-fetch,
+leading with mean and longest wait. (Presets: `DEMOS` in `server.py`.)
 `peaks-best` is the best peak-group setting so far (reserve sizes, runners rejoin as
 scavengers, `split_rule=basin`).
 

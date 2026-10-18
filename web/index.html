@@ -25,12 +25,19 @@
     <div class="card demo">
       <div class="card-head">
         <h2>Demo: earthquake on the UW campus</h2>
-        <button id="demo-run" type="button" class="primary">Run demo</button>
+        <div class="demo-buttons">
+          <button type="button" class="primary" data-demo="staged"
+                  title="20 drones, 60 expected people, supplies at Rainier Vista">Staged on campus</button>
+          <button type="button" class="primary" data-demo="redmond"
+                  title="10 drones, 250 expected people, supplies from Redmond">Flown from Redmond</button>
+        </div>
       </div>
-      <p class="note">Runs the UW scenario with supplies staged at Rainier Vista, one of the campus
-        Mass Assembly Areas UW lists for staging relief supplies, and compares it with flying them
-        in from Redmond. Completion is the time 80% of the expected number of people have been served;
-        each run draws its own head count around that expectation. The replay below shows the staged run.</p>
+      <p class="note"><b>Staged on campus:</b> 20 drones, 60 expected people, supplies at Rainier Vista,
+        one of the campus Mass Assembly Areas UW lists for staging relief supplies.
+        <b>Flown from Redmond:</b> 10 drones, 250 expected people, a 33 min round trip.
+        Each demo replays its own depot and compares Redmond with Rainier Vista over the same seeds.
+        Completion is the time 80% of the expected number of people have been served; each run draws its
+        own head count around that expectation.</p>
       <p id="demo-status" class="status" role="status"></p>
       <div id="demo-output" hidden>
         <p id="demo-headline" class="headline"></p>
