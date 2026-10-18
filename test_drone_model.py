@@ -52,3 +52,26 @@ def test_surplus_drones_loaded_search_empty_return():
         d.has_supplies = True
     # 4 loaded > 3 cells: 3 loaded search, 1 loaded idles, both empty return
     assert model.choose_num_returning() == (2, 3)
+
+
+from brute_force import FindThenFetchModel
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_brute_force_completes_and_supplies_everyone_once(seed):
+    model = FindThenFetchModel(4, 10, 15, seed=seed)
+    model.run()
+    assert all(person.supplied_by is not None for person in model.people)
+    pairs = {(p.supplied_step, p.supplied_by) for p in model.people}
+    assert len(pairs) == len(model.people)
+
+
+def test_same_seed_gives_same_people_layout():
+    a = DroneSearchModel(4, 10, 15, seed=7)
+    b = FindThenFetchModel(4, 10, 15, seed=7)
+    assert [p.cell for p in a.people] == [p.cell for p in b.people]
+
+
+def test_brute_force_only_fetches_for_people_already_found():
+    model = FindThenFetchModel(4, 4, 16, start_with_supplies=False, seed=0)
+    assert model.choose_num_returning() == (0, 4)  # nobody found yet -> all search

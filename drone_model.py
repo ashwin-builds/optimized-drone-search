@@ -71,6 +71,10 @@ class StepRecord:
 
 
 class DroneSearchModel:
+    name = "expected value"
+    rule = "r minimises |H + r - (S*lambda + U)|"
+    surplus_rule = True  # N > cells: loaded search, leftover empty drones return
+
     def __init__(
         self,
         n_drones: int,
@@ -260,8 +264,9 @@ class DroneSearchModel:
         return self.step_count
 
 
-def time_to_completion(n_drones: int, grid_size: int, n_people: int, **kwargs) -> int:
-    return DroneSearchModel(n_drones, grid_size, n_people, **kwargs).run()
+def time_to_completion(n_drones: int, grid_size: int, n_people: int,
+                       model_cls: type[DroneSearchModel] = DroneSearchModel, **kwargs) -> int:
+    return model_cls(n_drones, grid_size, n_people, **kwargs).run()
 
 
 if __name__ == "__main__":
