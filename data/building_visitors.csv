@@ -13,7 +13,7 @@ Hansee Hall,331,"331 beds - UW Housing & Food Services Facts & Figures, operatin
 Lander Hall,683,"683 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
 Maple Hall,917,"917 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
 McCarty Hall,970,"970 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
-McMahon Hall,1032,"1032 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
+McMahon Hall,1100,"11 floors x ~100 beds per floor = 1,100 (project team figure); UW HFS lists an operating capacity of 1,032 beds - https://hfs.uw.edu/about-hfs/facts-figures",true
 Oak Hall,380,"380 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
 Poplar Hall,297,"297 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
 Terry Hall,350,"350 beds - UW Housing & Food Services Facts & Figures, operating capacity (beds), used as daily occupants: https://hfs.uw.edu/about-hfs/facts-figures",false
@@ -53,7 +53,7 @@ Cyclotron Shop,82,estimate: 1026 m^2 floor area (OSM footprint x 2 levels) x 0.0
 Dempsey Hall,503,estimate: 6285 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
 Dempsey Indoor,1131,"estimate: 18850 m^2 floor area (OSM footprint x 2 levels - assumed, OSM has no level count) x 0.06 visitors/m^2/day for type 'sports' (OSM building=yes)",true
 Denny Hall,650,estimate: 8125 m^2 floor area (OSM footprint x 4 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
-E,245,estimate: 6991 m^2 floor area (OSM footprint x 8 levels) x 0.035 visitors/m^2/day for type 'dormitory' (OSM building=dormitory),true
+E,231,estimate: 6991 m^2 floor area (OSM footprint x 8 levels) x 0.033 visitors/m^2/day for type 'dormitory' (OSM building=dormitory),true
 Eagleson Hall,97,estimate: 1218 m^2 floor area (OSM footprint x 2 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
 Electrical and Computer Engineering Building,1121,estimate: 14012 m^2 floor area (OSM footprint x 5 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true
 Engineering Annex,340,estimate: 4254 m^2 floor area (OSM footprint x 3 levels) x 0.08 visitors/m^2/day for type 'university' (OSM building=university),true

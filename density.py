@@ -49,6 +49,13 @@ equal values (plateaus) are broken deterministically. A peak is a campus cell
 that is higher in this order than each of its (up to 8) campus neighbours.
 Every campus cell follows steepest ascent - move to the highest neighbour
 while it is higher - and belongs to the basin of the peak it stops at.
+Peaks on the campus edge (cells with fewer than 8 campus neighbours) are
+usually artefacts of the boundary cutting through a hillside, so by default
+(drop_edge_peaks=True) each is removed and its basin merged into the
+neighbouring basin it joins across the highest saddle - the highest cell
+pair where the two basins touch - or, for a detached piece of campus with no
+neighbouring basin, into the nearest remaining peak.
+
 A basin's remaining mass is the probability over its cells still unsearched,
 so "searched" is derived from the caller's unsearched set, never stored.
 
@@ -81,13 +88,24 @@ TYPE_DENSITY = {
     "university": 0.08,   # assumption: ~1 occupant per 20 m^2, ~1.6 visitors per seat per day
     "sports":     0.06,   # assumption: gyms, pools, indoor fields
     "office":     0.05,   # assumption: ~1 worker per 20 m^2, one visit a day
-    "dormitory":  0.035,  # UW HFS beds / OSM floor area: median 0.034 over the 12 matched halls
+    "dormitory":  0.033,  # UW HFS beds / floor area: median over the 12 matched halls
     "apartments": 0.03,   # assumption: larger units than dormitories
     "stadium":    0.01,   # assumption: a non-event day
     "parking":    0.005,  # assumption
     "low_use":    0.002,  # sheds, plant, gatehouses, roofs, containers, bike houses
 }
 FALLBACK_FACTOR = 0.25    # buildings not in the CSV get a quarter of their type density
+# Level counts known to be wrong or missing in OpenStreetMap. Used for floor
+# areas in this module only (the simulation's people placement is unchanged).
+LEVEL_OVERRIDES = {"McMahon Hall": 11.0}
+
+
+def _levels(cmap: CampusMap, i: int) -> tuple[float, bool]:
+    """(levels, known) for building i, applying LEVEL_OVERRIDES."""
+    _, name, levels = cmap.buildings[i]
+    if name in LEVEL_OVERRIDES:
+        return LEVEL_OVERRIDES[name], True
+    return levels, cmap.building_levels_known[i]
 LOW_USE_TAGS = {"industrial", "service", "shed", "roof", "gatehouse", "bridge", "garage"}
 
 
@@ -167,7 +185,7 @@ class DensitySurface:
     def __init__(self, cmap: CampusMap, grid: Grid,
                  visitors: dict[str, VisitorRow] | Path | str | None = None,
                  scale: str = "peak", sigma_factor: float = 1.0,
-                 min_sigma_cells: float = 0.5):
+                 min_sigma_cells: float = 0.5, drop_edge_peaks: bool = True):
         if scale not in ("peak", "mass"):
             raise ValueError("scale must be 'peak' or 'mass'")
         if sigma_factor <= 0 or min_sigma_cells < 0:
@@ -178,6 +196,8 @@ class DensitySurface:
         self.scale = scale
         self.sigma_factor = sigma_factor
         self.min_sigma_cells = min_sigma_cells
+        self.drop_edge_peaks = drop_edge_peaks
+        self.merged_edge_peaks: list[tuple[int, int]] = []   # edge peak cells removed
         self.k = k = grid.k
         side = grid.cell_side_m
         self._cmap = cmap
@@ -225,7 +245,7 @@ class DensitySurface:
     # ---------------------------------------------------------- building data
 
     def _resolve_visitors(self, cmap, visitors, side) -> list[BuildingSource]:
-        floor = [poly.area * levels for poly, _, levels in cmap.buildings]
+        floor = [poly.area * _levels(cmap, i)[0] for i, (poly, _, _) in enumerate(cmap.buildings)]
         share_floor: dict[str, float] = {}
         for (_, name, _), fa in zip(cmap.buildings, floor):
             if name in visitors:
@@ -285,6 +305,9 @@ class DensitySurface:
         basins: dict[tuple, list] = {t: [] for t in tops}
         for c, t in top_of.items():
             basins[t].append(c)
+        if self.drop_edge_peaks:
+            self._merge_edge_peaks(basins, top_of)
+            tops = list(basins)
         found = []
         for t in tops:
             mass = float(sum(self.prob[c] for c in basins[t]))
@@ -292,6 +315,37 @@ class DensitySurface:
         found.sort(key=lambda f: (-f[2], f[0][1], f[0][0]))
         return [Peak(i, t, self.raw[t], *self._buildings_at(t), basin, mass)
                 for i, (t, basin, mass) in enumerate(found)]
+
+    def _is_edge(self, c) -> bool:
+        return sum(1 for _ in self._neighbours(c)) < 8
+
+    def _merge_edge_peaks(self, basins: dict, top_of: dict) -> None:
+        """Merge each edge peak's basin into a neighbour (see module docstring)."""
+        def mass(t):
+            return sum(self.prob[c] for c in basins[t])
+        queue = sorted((t for t in basins if self._is_edge(t)), key=lambda t: (mass(t), t[1], t[0]))
+        for t in queue:
+            if len(basins) == 1:
+                break
+            best = None                            # (saddle key, target peak)
+            for c in basins[t]:
+                for n in self._neighbours(c):
+                    target = top_of[n]
+                    if target != t:
+                        saddle = min(self._key(c), self._key(n))
+                        if best is None or saddle > best[0]:
+                            best = (saddle, target)
+            if best is not None:
+                target = best[1]
+            else:                                  # detached: nearest interior peak
+                others = [u for u in basins if u != t and not self._is_edge(u)] or \
+                         [u for u in basins if u != t]
+                target = min(others, key=lambda u: ((u[0] - t[0]) ** 2 + (u[1] - t[1]) ** 2,
+                                                    u[1], u[0]))
+            for c in basins[t]:
+                top_of[c] = target
+            basins[target].extend(basins.pop(t))
+            self.merged_edge_peaks.append(t)
 
     def _buildings_at(self, cell) -> tuple[tuple[str, ...], float]:
         side = self.grid.cell_side_m
@@ -326,10 +380,12 @@ class DensitySurface:
 
 
 def surface_for(cell_side_m: float = 25.0, scale: str = "peak", sigma_factor: float = 1.0,
-                visitors_path: Path = VISITORS_PATH, map_path: Path = DATA_PATH) -> DensitySurface:
+                visitors_path: Path = VISITORS_PATH, map_path: Path = DATA_PATH,
+                drop_edge_peaks: bool = True) -> DensitySurface:
     """The UW surface from the saved map and visitor table."""
     cmap, grid = load_grid(str(map_path), float(cell_side_m), "redmond")
-    return DensitySurface(cmap, grid, visitors_path, scale=scale, sigma_factor=sigma_factor)
+    return DensitySurface(cmap, grid, visitors_path, scale=scale, sigma_factor=sigma_factor,
+                          drop_edge_peaks=drop_edge_peaks)
 
 
 # ------------------------------------------------------------- estimate rows
@@ -345,10 +401,10 @@ def estimate_rows(cmap: CampusMap, existing: dict[str, VisitorRow]) -> list[dict
         if name:
             counts[name] = counts.get(name, 0) + 1
     rows = []
-    for (poly, name, levels), tag, known in zip(cmap.buildings, cmap.building_tags,
-                                                 cmap.building_levels_known):
+    for i, ((poly, name, _), tag) in enumerate(zip(cmap.buildings, cmap.building_tags)):
         if not name or counts[name] > 1 or name in existing:
             continue
+        levels, known = _levels(cmap, i)
         kind = building_type(tag, name)
         if kind in ("low_use", "parking"):
             continue
@@ -386,10 +442,11 @@ def _info(s: DensitySurface) -> None:
           f"{counts['estimate']} estimated (CSV), {counts['fallback']} fallback")
     if s.unmatched_rows:
         print(f"CSV rows with no building of that name: {', '.join(s.unmatched_rows)}")
-    edge = sum(1 for p in s.peaks if len(list(s._neighbours(p.cell))) < 8)
+    edge = sum(1 for p in s.peaks if s._is_edge(p.cell))
     off = sum(1 for p in s.peaks if p.distance_m > side)
-    print(f"peaks: {len(s.peaks)}  ({edge} on the campus edge, "
-          f"{off} more than one cell from any building)")
+    merged = (f"{len(s.merged_edge_peaks)} edge peaks merged into neighbouring basins"
+              if s.drop_edge_peaks else f"{edge} on the campus edge (kept)")
+    print(f"peaks: {len(s.peaks)}  ({merged}, {off} more than one cell from any building)")
     print(f"\ntop 15 peaks by mass")
     print(f"  {'id':>3} {'cell':>10}  {'height':>9} {'mass':>6}  building")
     for p in s.peaks[:15]:
@@ -461,6 +518,8 @@ def main():
     parser.add_argument("--cell-side", type=float, default=25.0)
     parser.add_argument("--scale", choices=["peak", "mass"], default="peak")
     parser.add_argument("--sigma-factor", type=float, default=1.0)
+    parser.add_argument("--keep-edge-peaks", action="store_true",
+                        help="keep peaks on the campus edge instead of merging them")
     parser.add_argument("--save", metavar="PATH", help="write the 'show' figure to a PNG")
     args = parser.parse_args()
     if not DATA_PATH.exists():
@@ -468,7 +527,8 @@ def main():
     if args.command == "estimate-csv":
         _write_estimates()
         return
-    s = surface_for(args.cell_side, args.scale, args.sigma_factor)
+    s = surface_for(args.cell_side, args.scale, args.sigma_factor,
+                    drop_edge_peaks=not args.keep_edge_peaks)
     if args.command == "info":
         _info(s)
     else:

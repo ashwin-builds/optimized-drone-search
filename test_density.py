@@ -133,6 +133,37 @@ def test_sigma_follows_footprint_and_factor_with_a_floor():
     assert hall.centroid == pytest.approx((18.0, 12.0), abs=1e-3)
 
 
+def test_edge_peaks_are_merged_into_the_neighbouring_basin():
+    # a building straddling the west edge makes a peak on the boundary;
+    # an interior building makes a normal one
+    blds = [(-50, 262.5, 37.5, 362.5, "Edge", "university", 3),
+            (612.5, 262.5, 712.5, 362.5, "Inner", "university", 3)]
+    vis = table(Edge=1000, Inner=1000)
+    kept = surface(blds, vis, drop_edge_peaks=False)
+    merged = surface(blds, vis)
+    assert len(kept.peaks) == 2 and any(kept._is_edge(p.cell) for p in kept.peaks)
+    assert len(merged.peaks) == 1 and not merged._is_edge(merged.peaks[0].cell)
+    assert merged.merged_edge_peaks and merged.peaks[0].buildings == ("Inner",)
+    # nothing is lost: one basin covers every campus cell and holds all the mass
+    assert merged.peaks[0].basin == frozenset(merged.prob)
+    assert merged.peaks[0].mass == pytest.approx(1.0)
+    assert np.array_equal(merged.prob_grid, kept.prob_grid)     # the surface itself is unchanged
+
+
+def test_detached_edge_peak_merges_into_the_nearest_peak():
+    # two separate campus pieces: the small one only has edge cells
+    feats = [{"type": "Feature", "properties": {"role": "campus"}, "geometry": mapping(
+        box(0, 0, 600, 600).union(box(800, 0, 850, 50)))},
+        {"type": "Feature", "geometry": mapping(box(262.5, 262.5, 362.5, 362.5)),
+         "properties": {"role": "building", "name": "Main", "building": "university", "levels": 3}},
+        {"type": "Feature", "geometry": mapping(box(812.5, 12.5, 837.5, 37.5)),
+         "properties": {"role": "building", "name": "Hut", "building": "university", "levels": 1}}]
+    cmap = CampusMap({"type": "FeatureCollection", "features": feats})
+    s = DensitySurface(cmap, cmap.grid(25.0, "redmond"), table(Main=1000, Hut=50))
+    assert len(s.peaks) == 1 and s.peaks[0].buildings == ("Main",)
+    assert s.peaks[0].basin == frozenset(s.prob)
+
+
 # ---------------------------------------------------------------- queries
 
 def test_remaining_mass_tracks_the_unsearched_set():
@@ -202,7 +233,7 @@ def test_visitor_sources_measured_estimate_fallback_and_shared_names():
            "Twin": VisitorRow("Twin", 500, "estimate", True),
            "Gone": VisitorRow("Gone", 10, "no such building", False)}
     s = surface(blds, vis)
-    lib, t1, t2, unnamed = s.sources
+    lib, t1, t2, unnamed = s.sources[:4]
     assert (lib.kind, lib.visitors) == ("measured", 900)
     assert t1.kind == t2.kind == "estimate"
     assert t1.visitors == pytest.approx(400) and t2.visitors == pytest.approx(100)
@@ -281,5 +312,16 @@ def test_uw_surface(scale):
     assert sum(s.prob.values()) == pytest.approx(1.0)
     assert len(s.peaks) > 20
     assert sum(p.mass for p in s.peaks) == pytest.approx(1.0)
+    assert not any(s._is_edge(p.cell) for p in s.peaks)
+    assert all(p.distance_m <= s.grid.cell_side_m for p in s.peaks)
     top = {b for p in s.peaks[:10] for b in p.buildings}
     assert {"Kane Hall", "Husky Union Building"} <= top
+
+
+def test_level_overrides_feed_floor_area_estimates():
+    from density import LEVEL_OVERRIDES
+    cmap, _ = make_map([(100, 100, 200, 200, "McMahon Hall", "university", None)])
+    row = estimate_rows(cmap, {})[0]
+    assert row["daily_visitors"] == round(10_000 * LEVEL_OVERRIDES["McMahon Hall"]
+                                          * TYPE_DENSITY["university"])
+    assert "assumed" not in row["source"]
