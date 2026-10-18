@@ -259,3 +259,13 @@ def test_floor_and_density_placements_differ_on_the_real_map():
     dens = ContinuousModel(5, n_people=50, seed=2, **Scenario(people="density").model_kwargs())
     assert [p.xy for p in floor.people] != [p.xy for p in dens.people]
     assert floor.density == dens.density      # same prior either way
+
+
+def test_benchmark_csv_keeps_columns_only_some_models_have(tmp_path):
+    from benchmark import write_csv
+    rows = [{"algo": "expected", "completion": 1.0},
+            {"algo": "peaks-mass-group", "completion": 2.0, "splits": 3}]
+    path = tmp_path / "rows.csv"
+    write_csv(rows, str(path))
+    lines = path.read_text().splitlines()
+    assert lines[0] == "algo,completion,splits" and lines[1].endswith(",")

@@ -175,7 +175,8 @@ def summarize_rows(rows: list[dict], baseline: str = "brute",
 
 def write_csv(rows: list[dict], path: str) -> None:
     with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+        fields = list(dict.fromkeys(k for r in rows for k in r))   # some models add columns
+        writer = csv.DictWriter(f, fieldnames=fields, restval="")
         writer.writeheader()
         writer.writerows(rows)
 

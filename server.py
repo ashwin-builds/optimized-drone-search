@@ -184,7 +184,8 @@ class Handler(SimpleHTTPRequestHandler):
                 rows = job.get("rows") or []
                 buf = io.StringIO()
                 if rows:
-                    writer = csv.DictWriter(buf, fieldnames=list(rows[0]))
+                    fields = list(dict.fromkeys(k for r in rows for k in r))
+                    writer = csv.DictWriter(buf, fieldnames=fields, restval="")
                     writer.writeheader()
                     writer.writerows(rows)
                 body = buf.getvalue().encode()
