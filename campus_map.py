@@ -15,7 +15,8 @@ simulation's square grid:
   * search cells   cells whose centre is on campus; only these are searched
   * people         a share of people (indoor_fraction) are inside buildings,
                    placed in proportion to floor area (footprint x levels,
-                   2 levels when OSM doesn't say); the rest are outdoors,
+                   LEVEL_OVERRIDES where OSM is wrong, 2 levels when OSM
+                   doesn't say); the rest are outdoors,
                    spread evenly over campus cells that are not buildings
   * depot exit     where the straight line from the campus centre to the
                    depot crosses the campus boundary
@@ -47,6 +48,8 @@ UW_BBOX = (47.643, -122.322, 47.664, -122.293)
 # depots (lon, lat): UW Bothell campus and downtown Redmond
 DEPOT_LONLAT = {"redmond": (-122.1215, 47.6740), "bothell": (-122.1906, 47.7589)}
 DEFAULT_LEVELS = 2.0
+# Level counts that OpenStreetMap has wrong or missing, by building name.
+LEVEL_OVERRIDES = {"McMahon Hall": 11.0}
 EARTH_R = 6_371_008.8
 
 # ---------------------------------------------------------------------- fetch
@@ -193,10 +196,11 @@ class CampusMap:
             if f["properties"].get("role") != "building":
                 continue
             g = self._to_m(shape(f["geometry"]))
-            levels = f["properties"].get("levels") or DEFAULT_LEVELS
-            self.buildings.append((g, f["properties"].get("name"), float(levels)))
+            name = f["properties"].get("name")
+            levels = LEVEL_OVERRIDES.get(name) or f["properties"].get("levels")
+            self.buildings.append((g, name, float(levels or DEFAULT_LEVELS)))
             self.building_tags.append(f["properties"].get("building"))
-            self.building_levels_known.append(bool(f["properties"].get("levels")))
+            self.building_levels_known.append(bool(levels))
         self.width_m = self.campus.bounds[2]
         self.height_m = self.campus.bounds[3]
 

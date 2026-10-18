@@ -319,7 +319,7 @@ def test_uw_surface(scale):
 
 
 def test_level_overrides_feed_floor_area_estimates():
-    from density import LEVEL_OVERRIDES
+    from campus_map import LEVEL_OVERRIDES
     cmap, _ = make_map([(100, 100, 200, 200, "McMahon Hall", "university", None)])
     row = estimate_rows(cmap, {})[0]
     assert row["daily_visitors"] == round(10_000 * LEVEL_OVERRIDES["McMahon Hall"]

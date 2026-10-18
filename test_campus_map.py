@@ -198,3 +198,15 @@ def test_real_map_simulation_runs_with_checks(key):
     grid = sc.map_grid[1]
     indoor = sum(p.cell in grid.building_cells for p in model.people) / len(model.people)
     assert indoor > 0.6
+
+
+def test_level_overrides_replace_missing_or_wrong_osm_levels(map_path):
+    data = json.loads(map_path.read_text())
+    data["features"][1]["properties"].update(name="McMahon Hall", levels=None)
+    cmap = CampusMap(data)
+    i = [n for _, n, _ in cmap.buildings].index("McMahon Hall")
+    assert cmap.buildings[i][2] == campus_map.LEVEL_OVERRIDES["McMahon Hall"] == 11.0
+    assert cmap.building_levels_known[i]
+    # people placement weights now use 11 floors for it
+    grid = cmap.grid(25.0, "redmond")
+    assert grid.indoor_weight[(3, 3)] == pytest.approx(625 * 11)

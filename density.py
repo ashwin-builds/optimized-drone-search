@@ -95,17 +95,6 @@ TYPE_DENSITY = {
     "low_use":    0.002,  # sheds, plant, gatehouses, roofs, containers, bike houses
 }
 FALLBACK_FACTOR = 0.25    # buildings not in the CSV get a quarter of their type density
-# Level counts known to be wrong or missing in OpenStreetMap. Used for floor
-# areas in this module only (the simulation's people placement is unchanged).
-LEVEL_OVERRIDES = {"McMahon Hall": 11.0}
-
-
-def _levels(cmap: CampusMap, i: int) -> tuple[float, bool]:
-    """(levels, known) for building i, applying LEVEL_OVERRIDES."""
-    _, name, levels = cmap.buildings[i]
-    if name in LEVEL_OVERRIDES:
-        return LEVEL_OVERRIDES[name], True
-    return levels, cmap.building_levels_known[i]
 LOW_USE_TAGS = {"industrial", "service", "shed", "roof", "gatehouse", "bridge", "garage"}
 
 
@@ -245,7 +234,7 @@ class DensitySurface:
     # ---------------------------------------------------------- building data
 
     def _resolve_visitors(self, cmap, visitors, side) -> list[BuildingSource]:
-        floor = [poly.area * _levels(cmap, i)[0] for i, (poly, _, _) in enumerate(cmap.buildings)]
+        floor = [poly.area * levels for poly, _, levels in cmap.buildings]
         share_floor: dict[str, float] = {}
         for (_, name, _), fa in zip(cmap.buildings, floor):
             if name in visitors:
@@ -401,10 +390,10 @@ def estimate_rows(cmap: CampusMap, existing: dict[str, VisitorRow]) -> list[dict
         if name:
             counts[name] = counts.get(name, 0) + 1
     rows = []
-    for i, ((poly, name, _), tag) in enumerate(zip(cmap.buildings, cmap.building_tags)):
+    for (poly, name, levels), tag, known in zip(cmap.buildings, cmap.building_tags,
+                                                 cmap.building_levels_known):
         if not name or counts[name] > 1 or name in existing:
             continue
-        levels, known = _levels(cmap, i)
         kind = building_type(tag, name)
         if kind in ("low_use", "parking"):
             continue
