@@ -94,8 +94,9 @@ def run_scenario(params: dict) -> dict:
             "replay": {
                 "cells": [[x, y, _r(a), _r(b)] for (x, y), (a, b) in model.cell_windows.items()],
                 "people": people,
-                "segments": {d: [[_r(t0), _r(t1), s, int(ld), _r(x0), _r(y0), _r(x1), _r(y1)]
-                                 for t0, t1, s, ld, x0, y0, x1, y1 in segs]
+                "segments": {d: [[_r(t0), _r(t1), s, int(ld), _r(x0), _r(y0), _r(x1), _r(y1),
+                                  g]
+                                 for t0, t1, s, ld, x0, y0, x1, y1, g in segs]
                              for d, segs in model.segments.items()},
                 "decisions": [[_r(d.time), d.mode, d.H, d.F, d.U, d.S, d.r, _r(d.E, 2), d.n,
                                _r(d.R, 4)] for d in model.decisions],

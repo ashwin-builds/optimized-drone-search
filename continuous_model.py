@@ -283,6 +283,8 @@ class ContinuousModel(DroneSearchModel):
 
     def _claim(self, cell: tuple[int, int]) -> None:
         """Take a cell out of the unsearched pool (it is now some drone's to search)."""
+        if self.check and cell in self.cell_windows:
+            raise SimulationInvariantError(f"cell {cell} searched twice")
         self.unsearched.discard(cell)
         i = self._cell_index.get(cell)
         if i is not None and self._alive[i]:
@@ -374,7 +376,20 @@ class ContinuousModel(DroneSearchModel):
         segs = self.segments[drone.id]
         if segs and segs[-1][1] is None:
             segs[-1][1] = t
-        segs.append([t, until, drone.status, drone.has_supplies, *xy0, *xy1])
+        segs.append([t, until, drone.status, drone.has_supplies, *xy0, *xy1,
+                     self._group_label(drone)])
+
+    def extra_metrics(self) -> dict:
+        """Model-specific numbers for metrics.summarize (hook; none by default)."""
+        return {}
+
+    def _group_label(self, drone: CDrone):
+        """Group id recorded in the replay log (None: no groups in this model)."""
+        return None
+
+    def _eligible(self, drone: CDrone, person) -> bool:
+        """Whether a free loaded drone may serve this waiting person (hook)."""
+        return True
 
     def _set_status(self, drone: CDrone, status: str, t: float, until: float | None = None,
                     to: tuple[float, float] | None = None) -> None:
@@ -440,6 +455,12 @@ class ContinuousModel(DroneSearchModel):
         people_xy = np.array([p.xy for p in people], dtype=float)
         dist = np.hypot(drone_xy[:, None, 0] - people_xy[None, :, 0],
                         drone_xy[:, None, 1] - people_xy[None, :, 1])  # [drone, person]
+        eligible = np.array([[self._eligible(d, p) for p in people] for d in free])
+        dist = np.where(eligible, dist, np.inf)        # ineligible pairs never match
+        free = [d for d, ok in zip(free, eligible.any(axis=1)) if ok]
+        dist = dist[eligible.any(axis=1)]
+        if not free:
+            return
 
         # pool: the U + 1 drones closest to any waiting person
         pool = np.argsort(dist.min(axis=1), kind="stable")[:len(people) + 1]
@@ -741,3 +762,8 @@ CONTINUOUS_ALGORITHMS: dict[str, type[ContinuousModel]] = {
     "brute": ContinuousFindThenFetch,
     "greedy-density": ContinuousGreedyDensity,
 }
+
+# the peak-group variants live in peaks_model.py (which imports this module)
+from peaks_model import PEAK_ALGORITHMS  # noqa: E402
+
+CONTINUOUS_ALGORITHMS.update(PEAK_ALGORITHMS)

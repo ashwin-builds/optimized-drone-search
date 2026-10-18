@@ -29,6 +29,9 @@ from scenario import CAMPUS_CHOICES, DEPOT_DISTANCE_KM, Scenario
 from visualize import EMPTY, HIDDEN, LOADED, SUPPLIED, WAITING, show_or_save, spread
 
 ASSIGNED = "#9467bd"    # found, a drone is flying to them
+# peak groups (categorical palette order; scavengers are grey)
+GROUP_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6",
+                "#e34948"]
 CELL_CMAP = LinearSegmentedColormap.from_list("search", ["#d0d0d0", "#fbfbf6"])
 CELL_CMAP.set_bad("#ecebe7")  # off campus (real map)
 
@@ -82,7 +85,7 @@ def snapshot(model: ContinuousModel, t: float) -> CSnapshot:
             cells[d.cell[1], d.cell[0]] = frac
         elif d.status == "return":
             frac = min(1.0, (t - d.started) / model.T)
-        drones.append((pos, d.status, d.has_supplies, frac, d.id))
+        drones.append((pos, d.status, d.has_supplies, frac, d.id, model._group_label(d)))
     return CSnapshot(
         time=t,
         cells=cells,
@@ -277,7 +280,7 @@ class ContinuousPanel:
 
         by_cell: dict[tuple, list] = {}
         out_xy, back_xy, exit_xy = [], [], []
-        for pos, status, loaded, frac, did in snap.drones:
+        for pos, status, loaded, frac, did, group in snap.drones:
             if status == "deliver":
                 continue  # drawn above, between its start and the person
             if status == "exit":
@@ -290,11 +293,13 @@ class ContinuousPanel:
                 x = 2 * frac if frac < 0.5 else 2 * (1 - frac)
                 (out_xy if frac < 0.5 else back_xy).append((x, self.lane[did]))
             else:
-                by_cell.setdefault(pos, []).append((status, loaded))
+                by_cell.setdefault(pos, []).append((status, loaded, group))
         search_xy, search_c, idle_xy, idle_c = [], [], [], []
         for (x, y), ds in by_cell.items():
-            for (status, loaded), (dx, dy) in zip(ds, spread(len(ds), max(0.25, 0.012 * self.model.k))):
-                color = LOADED if loaded else EMPTY
+            for (status, loaded, group), (dx, dy) in zip(ds, spread(len(ds), max(0.25, 0.012 * self.model.k))):
+                # peak-group models: colour by group (grey = scavenger); others: loaded / empty
+                color = (LOADED if loaded else EMPTY) if group is None else \
+                    ("#85847e" if group < 0 else GROUP_COLORS[group % len(GROUP_COLORS)])
                 if status == "search":
                     search_xy.append((x + dx, y + dy))
                     search_c.append(color)

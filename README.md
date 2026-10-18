@@ -18,6 +18,7 @@ pytest
 | File | What it is |
 |---|---|
 | `continuous_model.py` | Event-driven simulator and the algorithms (`expected`, `expected-uniform`, `keep`, `brute`, `greedy-density`) |
+| `peaks_model.py` | Peak-group search: groups work density peaks, scavengers take the rest (`peaks-*`) |
 | `scenario.py` | UW scenario: depot distances, drone speeds; real map or square approximation |
 | `campus_map.py` | Downloads the UW boundary and building footprints from OpenStreetMap and rasterises them |
 | `density.py`, `data/building_visitors.csv` | Prior density surface of where people are (the searcher's belief), its peaks and basins |
@@ -91,9 +92,40 @@ itself, so it is exactly right.
 | `keep` | expected value, but nobody returns while the fleet can finish searching within a trip |
 | `brute` | find-then-fetch: fetch only for people already found |
 | `greedy-density` | each free drone takes the cell with the best prob / (travel + tau); expected-value depot runs |
+| `peaks-<size>-<rejoin>` | peak groups (below); size `fixed`, `mass` or `reserve`, rejoin `group` or `scavengers` |
 
 ```bash
 python benchmark.py --drones 10 20 50 --people 60 250 --runs 30 \
     --algos expected greedy-density "expected:search_en_route=False" \
     --baseline expected --compare-to greedy-density --placement density
+```
+
+## Peak-group search (`peaks_model.py`)
+
+At the start, the top m = n // 10 peaks of the density surface each get a group
+of drones, which claims the peak. Group drones search the best cells of their
+basin (prob / (travel + tau)), searching whatever they fly over on the way.
+When a group's best in-basin rate drops below the rate of moving to an
+unclaimed, non-exhausted neighbouring peak, it splits in two (or moves, if it
+has one drone or one candidate); when no candidate peak has mass ≥ k it
+dissolves. A peak is exhausted once its unsearched mass is below
+`k = k_frac × the largest peak's initial mass`, so peaks that scavengers
+cleared are never claimed. Scavengers search the nearest cell outside claimed
+basins. Group drones deliver only to people their group found; scavengers
+deliver to anyone. Each group and the scavengers run their own depot-run
+balance.
+
+| Option | Values |
+|---|---|
+| size strategy | `fixed`: groups of 10, leftovers scavenge · `mass`: all drones shared by peak mass (≥ 2 each) · `reserve`: `scavenger_share` (0.3) scavenge, the rest by mass |
+| rejoin | `group`: back to the group after a depot run (the smaller half if it split, scavenger if it dissolved) · `scavengers`: depot runners become scavengers |
+| `k_frac` | exhaustion threshold relative to the largest peak (default 0.10) |
+
+Every split, move and dissolve is in `model.group_log`; the replay log and both
+viewers colour drones by group (grey = scavenger). Variants with options:
+
+```bash
+python benchmark.py --drones 20 --people 250 --runs 30 \
+    --algos peaks-mass-group "peaks-mass-group:k_frac=0.05" greedy-density \
+    --baseline expected --compare-to greedy-density
 ```

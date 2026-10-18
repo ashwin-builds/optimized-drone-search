@@ -4,8 +4,15 @@
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-const ALGO_VAR = { expected: "--series-1", keep: "--series-2", brute: "--series-3" };
-const algoColor = (key) => css(ALGO_VAR[key] || "--text-secondary");
+const ALGO_VAR = { expected: "--series-1", keep: "--series-2", brute: "--series-3",
+                   "greedy-density": "--series-4", "expected-uniform": "--series-5" };
+// drone colours for peak groups (categorical order); scavengers use the muted ink
+const GROUP_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300",
+                      "#6250d6", "#e34948"];
+const algoColor = (key) => css(ALGO_VAR[key] ||
+  (key.startsWith("peaks-fixed") ? "--series-6" : key.startsWith("peaks-mass") ? "--series-7"
+    : key.startsWith("peaks-reserve") ? "--series-8" : "--text-secondary"));
+const DEFAULT_ALGOS = new Set(["expected", "greedy-density", "peaks-mass-group"]);
 
 function el(tag, attrs = {}, text) {
   const node = document.createElement(tag);
@@ -77,7 +84,7 @@ async function init() {
     for (const [key, a] of Object.entries(state.options.algorithms)) {
       const label = el("label", { title: a.rule });
       const box = el("input", { type: "checkbox", name: "algos", value: key });
-      box.checked = true;
+      box.checked = DEFAULT_ALGOS.has(key);
       const sw = el("span", { class: "swatch" });
       sw.style.background = algoColor(key);
       label.append(box, sw, document.createTextNode(a.name));
@@ -499,7 +506,10 @@ function drawReplays() {
       const n = upperBound(segs, t, (s) => s[0]);
       const seg = segs[Math.max(0, n - 1)];
       if (!seg) return;
-      const [t0, t1, status, loaded, x0, y0, x1, y1] = seg;
+      const [t0, t1, status, loaded, x0, y0, x1, y1, group] = seg;
+      // peak-group models: colour by group, scavengers muted; other models: ink
+      const ink = group == null ? colors.ink
+        : group < 0 ? colors.muted : GROUP_COLORS[group % GROUP_COLORS.length];
       const f = t1 > t0 ? Math.min(1, Math.max(0, (t - t0) / (t1 - t0))) : 1;
       counts[status] = (counts[status] || 0) + 1;
       if (status === "return") return;  // drawn in the depot strip below
@@ -511,17 +521,17 @@ function drawReplays() {
         ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(X(x), Y(y)); ctx.lineTo(X(x1), Y(y1)); ctx.stroke();
         ctx.setLineDash([]);
-        drawDiamond(ctx, X(x), Y(y), ds, colors.ink);
+        drawDiamond(ctx, X(x), Y(y), ds, ink);
       } else if (status === "exit") {
-        drawArrow(ctx, X(x), Y(y), ds, Math.sign(x1 - x0) || 1, false, colors.ink);
+        drawArrow(ctx, X(x), Y(y), ds, Math.sign(x1 - x0) || 1, false, ink);
       } else if (status === "idle") {
-        ctx.strokeStyle = colors.ink;
-        ctx.fillStyle = colors.ink;
+        ctx.strokeStyle = ink;
+        ctx.fillStyle = ink;
         ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.arc(X(x), Y(y), ds * 0.5, 0, 2 * Math.PI);
         loaded ? ctx.fill() : ctx.stroke();
       } else {
-        drawTriangle(ctx, X(x), Y(y), ds, !!loaded, colors.ink);
+        drawTriangle(ctx, X(x), Y(y), ds, !!loaded, ink);
       }
     });
 
@@ -627,6 +637,8 @@ function buildLegend() {
     ["Found, drone on the way", (c) => dot(c, css("--warning"))],
     ["Served", (c) => dot(c, css("--good"))],
     ["Campus exit toward the depot", (c) => { c.fillStyle = css("--text-secondary"); c.fillRect(3, 3, 10, 10); }],
+    ["Peak-group models: drone colour = group, grey = scavenger", (c) => {
+      GROUP_COLORS.slice(0, 3).forEach((g, i) => { c.fillStyle = g; c.fillRect(1 + 5 * i, 4, 4, 8); }); }],
     ["Building outline (real map)", (c) => { c.strokeStyle = css("--building-line"); c.lineWidth = 1; c.strokeRect(3, 3, 10, 10); }],
   ];
   function dot(c, color) { c.fillStyle = color; c.beginPath(); c.arc(8, 8, 4, 0, 7); c.fill(); }

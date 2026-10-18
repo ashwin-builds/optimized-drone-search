@@ -56,6 +56,7 @@ def summarize(model: ContinuousModel) -> dict:
     }
     for status in STATUSES:
         row[f"share_{status}"] = sum(d.time_in.get(status, 0.0) for d in model.drones) / total
+    row.update(model.extra_metrics())
     return row
 
 

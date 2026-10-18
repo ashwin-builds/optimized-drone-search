@@ -57,7 +57,7 @@ def test_search_moves_beyond_a_neighbouring_cell_cost_flight_time():
     model.run()
     transits = [s for segs in model.segments.values() for s in segs if s[2] == "transit"]
     assert transits, "expected some long search moves"
-    for t0, t1, _, _, x0, y0, x1, y1 in transits:
+    for t0, t1, _, _, x0, y0, x1, y1, _ in transits:
         dist = math.hypot(x1 - x0, y1 - y0)
         assert t1 - t0 == pytest.approx((dist - 1.0) * model.move_time)
 
@@ -67,7 +67,7 @@ def test_depot_trips_leave_and_return_through_the_depot_edge():
     model.run()
     dp = SC.depot_point
     for segs in model.segments.values():
-        for i, (t0, t1, status, loaded, x0, y0, x1, y1) in enumerate(segs):
+        for i, (t0, t1, status, loaded, x0, y0, x1, y1, _) in enumerate(segs):
             if status == "exit":
                 assert (x1, y1) == pytest.approx(dp)
                 assert not loaded

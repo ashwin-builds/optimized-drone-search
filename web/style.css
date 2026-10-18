@@ -10,6 +10,11 @@
   --series-1: #2a78d6;   /* expected value */
   --series-2: #eb6834;   /* keep searching */
   --series-3: #1baf7a;   /* find-then-fetch */
+  --series-4: #eda100;   /* greedy density */
+  --series-5: #e87ba4;   /* expected (uniform E) */
+  --series-6: #008300;   /* peaks, fixed sizes */
+  --series-7: #6250d6;   /* peaks, mass sizes */
+  --series-8: #e34948;   /* peaks, reserve */
   --good: #0ca30c;
   --warning: #fab219;
   --critical: #d03b3b;
@@ -33,6 +38,11 @@
     --series-1: #3987e5;
     --series-2: #d95926;
     --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #e66767;
     --cell-unsearched: #3a3a36;
     --cell-searched: #1f1f1d;
     --cell-offcampus: #141413;
@@ -53,6 +63,11 @@
   --series-1: #3987e5;
   --series-2: #d95926;
   --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
   --cell-unsearched: #3a3a36;
   --cell-searched: #1f1f1d;
   --cell-offcampus: #141413;
@@ -98,7 +113,7 @@ main { padding: 16px 24px 40px; max-width: 1500px; margin: 0 auto; }
 }
 .controls input[type=number] { width: 84px; }
 .controls input[name=drones]:not([type=number]), .controls input[name=people]:not([type=number]) { width: 110px; }
-fieldset.algos { border: 1px solid var(--border); border-radius: 6px; padding: 2px 10px 6px; margin: 0; display: flex; gap: 12px; }
+fieldset.algos { border: 1px solid var(--border); border-radius: 6px; padding: 2px 10px 6px; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; max-width: 760px; }
 fieldset.algos legend { font-size: 12px; color: var(--text-secondary); padding: 0 4px; }
 fieldset.algos label { flex-direction: row; align-items: center; gap: 6px; font-size: 13px; color: var(--text-primary); }
 .swatch { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; }
