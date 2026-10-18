@@ -27,14 +27,11 @@ the smaller r. If free drones outnumber unclaimed cells, the surplus rule
 applies as in the discrete model: loaded drones take cells first, empty ones
 fill any left over, the remaining empty drones return.
 
-Search first: if the whole fleet could finish the remaining search in less
-than one round trip T (remaining cells * tau_s / N < T), the balance is
-skipped and empty drones only go back for people already found
-(r = min(free empty, U - F)). Searching is cheap next to a depot trip, so
-holding drones back from a short search only delays finding the last people,
-who then each wait a full trip. ContinuousKeepSearching reads "search first"
-literally instead: in that phase no empty drone goes back (r = 0) until the
-cells run out, trading longer waits for an earlier finish.
+ContinuousKeepSearching adds a search-first phase: if the whole fleet could
+finish the remaining search in less than one round trip T (remaining cells *
+tau_s / N < T), no empty drone goes back (r = 0) until the cells run out,
+trading longer waits for an earlier finish. ContinuousModel itself always
+uses the balance.
 
 With trip_time == search_time and spot_at_end=True every drone stays in sync
 and the rule reduces exactly to the discrete model's.
@@ -96,13 +93,13 @@ class Decision:
     U: int
     S: int          # drones searching after the decision
     r: int          # free empty drones sent back
-    mode: str       # "balance" | "search-first" | "surplus" | "fetch-found"
+    mode: str       # "balance" | "surplus" | "search-first" | "fetch-found"
 
 
 class ContinuousModel(DroneSearchModel):
     name = "expected value"
-    rule = "search first if left < T, else min |H+F+r - (U+E[finds in T])|"
-    keep_searching = False  # in the search-first phase: r = 0 instead of U - F
+    rule = "r minimises |H + F + r - (U + E[finds in T])|"
+    keep_searching = False  # r = 0 while the fleet can finish searching within T
 
     def __init__(self, n_drones: int, grid_size: int, n_people: int,
                  search_time: float = 1.0, trip_time: float = 1.0,
@@ -164,9 +161,9 @@ class ContinuousModel(DroneSearchModel):
             r = len(empty) - min(len(empty), empty_searchers)
             S = busy + cells
             mode = "surplus"
-        elif self.search_time_left(t) < self.T:
-            r = 0 if self.keep_searching else min(len(empty), max(0, U - F))
-            S = busy + len(free) - r
+        elif self.keep_searching and self.search_time_left(t) < self.T:
+            r = 0
+            S = busy + len(free)
             mode = "search-first"
         else:
             best = None

@@ -71,14 +71,21 @@ def test_uw_scenario_numbers():
     assert model.run() > 0
 
 
-def test_search_first_when_fleet_can_finish_within_one_trip():
-    # 4 drones, 16 cells, tau 1 -> 4 time units of search left < T = 10
+def test_expected_value_always_balances():
+    # even when the fleet could finish searching within one trip
     model = ContinuousModel(4, 4, 10, search_time=1.0, trip_time=10.0, seed=0)
     model.run()
-    first = model.decisions[0]
-    assert first.mode == "search-first"
-    # balance mode applies when the search is long compared with a trip
-    model = ContinuousModel(4, 20, 10, search_time=1.0, trip_time=10.0, seed=0)
+    assert {d.mode for d in model.decisions} <= {"balance", "surplus"}
+    assert model.decisions[0].mode == "balance"
+
+
+def test_keep_searching_enters_search_first_when_fleet_can_finish_within_one_trip():
+    # 4 drones, 16 cells, tau 1 -> 4 time units of search left < T = 10
+    model = ContinuousKeepSearching(4, 4, 10, search_time=1.0, trip_time=10.0, seed=0)
+    model.run_until(0.0)
+    assert model.decisions[0].mode == "search-first"
+    # long search compared with a trip -> balance
+    model = ContinuousKeepSearching(4, 20, 10, search_time=1.0, trip_time=10.0, seed=0)
     model.run_until(0.0)
     assert model.decisions[0].mode == "balance"
 
