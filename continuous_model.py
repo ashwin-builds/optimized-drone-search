@@ -763,7 +763,6 @@ CONTINUOUS_ALGORITHMS: dict[str, type[ContinuousModel]] = {
     "greedy-density": ContinuousGreedyDensity,
 }
 
-# the peak-group variants live in peaks_model.py (which imports this module)
-from peaks_model import PEAK_ALGORITHMS  # noqa: E402
-
-CONTINUOUS_ALGORITHMS.update(PEAK_ALGORITHMS)
+# the peak-group variants live in peaks_model.py, which imports this module and
+# adds itself to CONTINUOUS_ALGORITHMS (works whichever module is imported first)
+import peaks_model  # noqa: E402,F401

@@ -33,6 +33,9 @@ drone it re-plans from the free drones' mean position x:
     in-basin rate   max over its basin's unclaimed cells of prob / (travel + tau)
     move rate (q)   remaining_mass(q) / (travel(x -> peak q) + cells_left(q) * tau / (size / 2))
 
+(split_rule="cell", the default; split_rule="basin" instead compares the
+move rate with the group's rate on its own basin, remaining_mass(own) /
+(travel + cells_left(own) * tau / size), so both sides are group rates)
 over candidate peaks q: unclaimed and not exhausted, whose basins border the
 group's basin; if none qualify, the two nearest such peaks. If the best move
 rate beats the in-basin rate the group splits into two halves (lower drone
@@ -123,16 +126,21 @@ class PeakGroupModel(ContinuousModel):
     k_frac = 0.10
     scavenger_share = 0.3
     group_size = 10
+    split_rule = "cell"      # "cell": best in-basin cell rate; "basin": own-basin group rate
 
     def __init__(self, *args, size_strategy: str | None = None, rejoin: str | None = None,
-                 k_frac: float | None = None, scavenger_share: float | None = None, **kwargs):
+                 k_frac: float | None = None, scavenger_share: float | None = None,
+                 split_rule: str | None = None, **kwargs):
         super().__init__(*args, **kwargs)
         for name, value in (("size_strategy", size_strategy), ("rejoin", rejoin),
-                            ("k_frac", k_frac), ("scavenger_share", scavenger_share)):
+                            ("k_frac", k_frac), ("scavenger_share", scavenger_share),
+                            ("split_rule", split_rule)):
             if value is not None:
                 setattr(self, name, value)
-        if self.size_strategy not in SIZE_STRATEGIES or self.rejoin not in REJOIN_MODES:
-            raise ValueError(f"size_strategy in {SIZE_STRATEGIES}, rejoin in {REJOIN_MODES}")
+        if self.size_strategy not in SIZE_STRATEGIES or self.rejoin not in REJOIN_MODES \
+                or self.split_rule not in ("cell", "basin"):
+            raise ValueError(f"size_strategy in {SIZE_STRATEGIES}, rejoin in {REJOIN_MODES}, "
+                             f"split_rule in ('cell', 'basin')")
         if self.surface is None:
             raise ValueError("the peak-group model needs density=<DensitySurface>")
         if self.move_time is None:
@@ -341,7 +349,14 @@ class PeakGroupModel(ContinuousModel):
             move = {q: self.peak_remaining(q) /
                     (_dist(pos, self._peak_xy[q]) * self.move_time + self._cells_left(q) * self.tau / half)
                     for q in cands}
-            if max(move.values()) <= self._rate_in_basin(g.peak, pos):
+            if self.split_rule == "cell":
+                stay = self._rate_in_basin(g.peak, pos)
+            else:
+                left = self._cells_left(g.peak)
+                stay = 0.0 if left == 0 else self.peak_remaining(g.peak) / (
+                    _dist(pos, self._peak_xy[g.peak]) * self.move_time
+                    + left * self.tau / max(1, len(present)))
+            if max(move.values()) <= stay:
                 continue
             ranked = sorted(cands, key=lambda q: (-self.peak_remaining(q) /
                                                   max(_dist(pos, self._peak_xy[q]), 0.5), q))
@@ -584,3 +599,8 @@ PEAK_ALGORITHMS = {
     "peaks-reserve-group": PeaksReserveGroup,
     "peaks-reserve-scavengers": PeaksReserveScavengers,
 }
+
+# register with the simulator's algorithm table (see the end of continuous_model.py)
+from continuous_model import CONTINUOUS_ALGORITHMS  # noqa: E402
+
+CONTINUOUS_ALGORITHMS.update(PEAK_ALGORITHMS)

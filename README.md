@@ -120,6 +120,7 @@ balance.
 | size strategy | `fixed`: groups of 10, leftovers scavenge · `mass`: all drones shared by peak mass (≥ 2 each) · `reserve`: `scavenger_share` (0.3) scavenge, the rest by mass |
 | rejoin | `group`: back to the group after a depot run (the smaller half if it split, scavenger if it dissolved) · `scavengers`: depot runners become scavengers |
 | `k_frac` | exhaustion threshold relative to the largest peak (default 0.10) |
+| `split_rule` | `cell` (spec default): best single in-basin cell rate vs moving half the group, which at t = 0 almost always splits at once · `basin`: the group's rate on its own basin vs half the group on the neighbour |
 
 Every split, move and dissolve is in `model.group_log`; the replay log and both
 viewers colour drones by group (grey = scavenger). Variants with options:

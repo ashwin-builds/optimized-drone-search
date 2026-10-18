@@ -299,3 +299,33 @@ def test_check_catches_a_group_drone_outside_its_basin():
     other = next(p for p in s.peaks if p.id != m.groups[0].peak)
     with pytest.raises(SimulationInvariantError, match="searching basin"):
         m._start_search(d, sorted(other.basin)[0], 0.0)
+
+
+def test_split_rule_basin_keeps_the_group_on_a_big_untouched_peak():
+    # at t = 0 the default rule compares one cell against a whole neighbouring
+    # basin and splits at once; the basin rule compares group rates and stays
+    # strong neighbours either side of the biggest peak
+    grid, s = world([(212.5, 162.5, "W", 2500), (512.5, 162.5, "A", 4000),
+                     (812.5, 162.5, "E", 2500)])
+    real_timing = dict(search_time=0.07, move_time_per_cell=0.028, trip_time=33.0)  # UW, 25 m
+    for rule, expect_split in (("cell", True), ("basin", False)):
+        m = make(PeaksFixedGroup, grid, s, n=10, split_rule=rule, **real_timing)
+        m._update_groups(0.0)
+        assert any(e["event"] == "split" for e in m.group_log) == expect_split, rule
+
+
+def test_split_rule_basin_still_splits_once_the_basin_is_empty():
+    grid, s = world(ROW)
+    m = make(PeaksFixedGroup, grid, s, n=10, split_rule="basin")
+    claim_basin(m, peak_named(s, "A"))
+    m._update_groups(1.0)
+    assert [e["event"] for e in m.group_log] == ["form", "split"]
+
+
+def test_peaks_model_can_be_imported_first():
+    import subprocess
+    import sys
+    out = subprocess.run([sys.executable, "-c", "import peaks_model, continuous_model as c; "
+                          "print(sorted(k for k in c.CONTINUOUS_ALGORITHMS if k.startswith('peaks')))"],
+                         capture_output=True, text=True, cwd=__import__("os").path.dirname(__file__))
+    assert out.returncode == 0 and "peaks-mass-group" in out.stdout
