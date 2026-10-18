@@ -111,6 +111,13 @@ class Scenario:
         return DEPOT_DISTANCE_KM[self.depot]
 
     @property
+    def edge_to_depot_km(self) -> float:
+        """Straight-line distance from the campus exit to the depot."""
+        if self.uses_map:
+            return self.map_grid[1].exit_to_depot_m / 1000
+        return self.distance_km - self.edge_offset_m / 1000
+
+    @property
     def depot_point(self) -> tuple[float, float]:
         """Where drones leave/enter campus: the edge point facing the depot (cell units)."""
         if self.uses_map:
@@ -176,7 +183,8 @@ class Scenario:
             where = ("  map: square approximation (run `python campus_map.py fetch` for the real campus)\n"
                      f"  grid {self.k}x{self.k} cells of {self.cell_side_m:.1f} m "
                      f"({self.k ** 2 * self.cell_area_km2:.2f} km^2)\n")
-        return (f"UW Seattle campus, supplies from {self.depot.title()} ({self.distance_km:g} km)\n"
+        return (f"UW Seattle campus, supplies from {self.depot.title()} "
+                f"({self.edge_to_depot_km:.1f} km from the campus exit)\n"
                 + where +
                 f"  search {self.search_time_min * 60:.1f} s/cell "
                 f"({self.n_search_cells * self.search_time_min:.0f} drone-min for the campus), "

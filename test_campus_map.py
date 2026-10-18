@@ -155,3 +155,46 @@ def test_fetch_builds_the_map_from_an_overpass_response(tmp_path, monkeypatch):
     assert cmap.campus.area == pytest.approx(270_000, rel=2e-3)
     levels = {n: lv for _, n, lv in cmap.buildings}
     assert levels == {"Big Hall": 4.0, "Small Lab": 2.0, "Kiosk": 1.0}
+
+
+# ------------------------------------------------- the real map in data/
+
+real_map = pytest.mark.skipif(not campus_map.DATA_PATH.exists(),
+                              reason="data/uw_campus.geojson not downloaded")
+
+
+@real_map
+def test_real_uw_map_looks_like_uw():
+    cmap = CampusMap.load(campus_map.DATA_PATH)
+    assert 2.0e6 < cmap.campus.area < 3.2e6            # UW Seattle is roughly 2.3-2.8 km^2
+    names = {n for _, n, _ in cmap.buildings if n}
+    for building in ("Suzzallo Library", "Kane Hall", "Paul G. Allen Center", "Gerberding Hall"):
+        assert building in names
+    assert len(cmap.buildings) > 200
+    assert "OpenStreetMap" in cmap.source
+
+
+@real_map
+@pytest.mark.parametrize("depot", ["redmond", "bothell"])
+def test_real_map_depot_exits_face_the_depot(depot):
+    cmap = CampusMap.load(campus_map.DATA_PATH)
+    grid = cmap.grid(25.0, depot)
+    ex, ey = grid.exit_point[0] * 25, grid.exit_point[1] * 25
+    c = cmap.campus.centroid
+    dx, dy = cmap.lonlat_to_m(*campus_map.DEPOT_LONLAT[depot])
+    # exit is on the depot's side of the campus centre
+    assert (ex - c.x) * (dx - c.x) + (ey - c.y) * (dy - c.y) > 0
+    assert 11_000 < grid.exit_to_depot_m < 15_000
+
+
+@real_map
+@pytest.mark.parametrize("key", list(CONTINUOUS_ALGORITHMS))
+def test_real_map_simulation_runs_with_checks(key):
+    sc = Scenario(campus="uw")
+    model = CONTINUOUS_ALGORITHMS[key](15, n_people=80, seed=1, check=True, record=True,
+                                       **sc.model_kwargs())
+    model.run()
+    assert set(model.cell_windows) <= model.search_cells
+    grid = sc.map_grid[1]
+    indoor = sum(p.cell in grid.building_cells for p in model.people) / len(model.people)
+    assert indoor > 0.6

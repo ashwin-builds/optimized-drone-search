@@ -53,7 +53,7 @@ def scenario_info(sc: Scenario) -> dict:
     info = {
         "k": sc.k, "cell_side_m": sc.cell_side_m,
         "area_km2": sc.n_search_cells * sc.cell_area_km2,
-        "depot": sc.depot, "distance_km": sc.distance_km, "depot_point": sc.depot_point,
+        "depot": sc.depot, "distance_km": round(sc.edge_to_depot_km, 1), "depot_point": sc.depot_point,
         "search_time_min": sc.search_time_min, "trip_time_min": sc.trip_time_min,
         "move_time_min": sc.move_time_min, "map": None,
     }

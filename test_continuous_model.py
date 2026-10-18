@@ -62,7 +62,7 @@ def test_people_spotted_during_their_cells_search():
 
 
 def test_uw_scenario_numbers():
-    sc = Scenario()
+    sc = Scenario(campus="square")
     assert sc.k == 67
     assert sc.k * sc.cell_side_m == pytest.approx(math.sqrt(703 * 4046.86))
     assert sc.search_time_min == pytest.approx(sc.cell_side_m ** 2 / 150 / 60)
@@ -76,7 +76,7 @@ def test_uw_scenario_numbers():
 
 @pytest.mark.parametrize("cell", [100.0, 50.0, 25.0, 10.0])
 def test_cell_size_keeps_campus_area_and_total_search_work(cell):
-    sc = Scenario(cell_side_target_m=cell)
+    sc = Scenario(cell_side_target_m=cell, campus="square")
     assert sc.k ** 2 * sc.cell_area_km2 == pytest.approx(703 * 4046.86 / 1e6)
     assert sc.k ** 2 * sc.search_time_min == pytest.approx(703 * 4046.86 / 150 / 60)
 

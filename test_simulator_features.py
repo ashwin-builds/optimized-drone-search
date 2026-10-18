@@ -7,7 +7,7 @@ from continuous_model import (CONTINUOUS_ALGORITHMS, ContinuousModel, Simulation
 from metrics import STATUSES, curves, summarize
 from scenario import Scenario
 
-SC = Scenario()
+SC = Scenario(campus="square")   # the real map has its own tests in test_campus_map.py
 
 
 def uw(cls, n=12, p=40, seed=0, **kw):
@@ -18,7 +18,7 @@ def uw(cls, n=12, p=40, seed=0, **kw):
 @pytest.mark.parametrize("seed", range(4))
 @pytest.mark.parametrize("depot", ["redmond", "bothell"])
 def test_built_in_checks_pass_on_the_uw_scenario(key, seed, depot):
-    sc = Scenario(depot=depot)
+    sc = Scenario(depot=depot, campus="square")
     model = CONTINUOUS_ALGORITHMS[key](10, n_people=50, seed=seed, check=True,
                                        **sc.model_kwargs())
     model.run()
@@ -70,7 +70,8 @@ def test_depot_trips_leave_and_return_through_the_depot_edge():
             if status == "exit":
                 assert (x1, y1) == pytest.approx(dp)
                 assert not loaded
-                assert segs[i + 1][2] == "return"
+                if i + 1 < len(segs):  # the run can end mid-flight
+                    assert segs[i + 1][2] == "return"
             if status == "return":
                 assert t1 - t0 == pytest.approx(model.T)
                 assert (x0, y0) == pytest.approx(dp)
@@ -121,7 +122,9 @@ def test_dashboard_api_returns_replay_data():
     assert set(out["results"]) == {"expected", "brute"}
     rep = out["results"]["expected"]["replay"]
     assert len(rep["people"]) == 15
-    assert len(rep["cells"]) == out["scenario"]["k"] ** 2
+    sc = Scenario()
+    assert len(rep["cells"]) == sc.n_search_cells
+    assert (out["scenario"]["map"] is not None) == sc.uses_map
     for x, y, found, sent, supplied in rep["people"]:
         assert found <= sent <= supplied
     with pytest.raises(ValueError):
