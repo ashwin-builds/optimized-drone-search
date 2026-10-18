@@ -771,6 +771,39 @@ function buildLegend() {
 
 /* --------------------------------------------------------------- benchmark */
 
+// benchmark charts tell algorithms apart by line style and marker, not colour
+const BENCH_STYLE = {
+  expected: { dash: [], point: "circle" },                    // solid
+  brute: { dash: [8, 5], point: "rect" },                     // dashed
+  "peaks-best": { dash: [2, 4], point: "triangle" },          // dotted
+};
+const benchStyle = (key) => BENCH_STYLE[key] || { dash: [10, 4, 2, 4], point: "rectRot" };
+
+function lineSample(key, width = 30, height = 12) {
+  // a small canvas showing the algorithm's line style and marker (legend and table)
+  const c = document.createElement("canvas");
+  const dpr = window.devicePixelRatio || 1;
+  c.width = width * dpr; c.height = height * dpr;
+  c.style.width = `${width}px`; c.style.height = `${height}px`;
+  c.style.verticalAlign = "middle";
+  const ctx = c.getContext("2d");
+  ctx.scale(dpr, dpr);
+  const ink = css("--text-primary");
+  const { dash, point } = benchStyle(key);
+  ctx.strokeStyle = ink; ctx.fillStyle = ink; ctx.lineWidth = 2;
+  ctx.setLineDash(dash);
+  ctx.beginPath(); ctx.moveTo(1, height / 2); ctx.lineTo(width - 1, height / 2); ctx.stroke();
+  ctx.setLineDash([]);
+  const x = width / 2, y = height / 2, r = 3.5;
+  ctx.beginPath();
+  if (point === "rect") ctx.rect(x - r, y - r, 2 * r, 2 * r);
+  else if (point === "triangle") { ctx.moveTo(x, y - r - 1); ctx.lineTo(x + r + 0.5, y + r); ctx.lineTo(x - r - 0.5, y + r); ctx.closePath(); }
+  else if (point === "rectRot") { ctx.moveTo(x, y - r - 1); ctx.lineTo(x + r + 1, y); ctx.lineTo(x, y + r + 1); ctx.lineTo(x - r - 1, y); ctx.closePath(); }
+  else ctx.arc(x, y, r, 0, 2 * Math.PI);
+  ctx.fill();
+  return c;
+}
+
 function parseList(text) {
   return String(text).split(/[\s,]+/).filter(Boolean).map(Number).filter((v) => Number.isFinite(v) && v >= 0);
 }
@@ -844,9 +877,7 @@ function renderBench() {
     }
     const tr = el("tr");
     const name = el("td");
-    const sw = el("span", { class: "swatch" });
-    sw.style.background = algoColor(s.algo);
-    name.append(sw, document.createTextNode(` ${names[s.algo].name}`));
+    name.append(lineSample(s.algo), document.createTextNode(` ${names[s.algo].name}`));
     tr.append(
       name,
       el("td", {}, pm(s.completion, s.completion_ci, 2, 60)),
@@ -880,6 +911,15 @@ function renderBenchCharts() {
     const opts = baseChartOptions(label, "Drones");
     opts.interaction = { mode: "index", intersect: false };
     opts.scales.y.beginAtZero = true;
+    delete opts.scales.y.ticks.precision;   // hours and minutes need decimals here
+    opts.plugins.legend.labels = {
+      ...opts.plugins.legend.labels, usePointStyle: true, padding: 18,
+      generateLabels: (chart) => chart.data.datasets.map((ds, i) => ({
+        text: ds.label, pointStyle: lineSample(algos[i]), datasetIndex: i,
+        hidden: !chart.isDatasetVisible(i), fontColor: css("--text-secondary"),
+        strokeStyle: "transparent", fillStyle: "transparent", lineWidth: 0,
+      })),
+    };
     opts.plugins.tooltip = {
       callbacks: {
         title: (items) => `${items[0].parsed.x} drones, ${p} people`,
@@ -896,7 +936,8 @@ function renderBenchCharts() {
           label: names[a].name,
           data: rows.filter((s) => s.algo === a).sort((x, y) => x.drones - y.drones)
                     .map((s) => ({ x: s.drones, y: s[metric] / scale })),
-          borderColor: algoColor(a), backgroundColor: algoColor(a),
+          borderColor: css("--text-primary"), backgroundColor: css("--text-primary"),
+          borderDash: benchStyle(a).dash, pointStyle: benchStyle(a).point,
           borderWidth: 2, pointRadius: 4, pointHoverRadius: 6,
         })),
       },
