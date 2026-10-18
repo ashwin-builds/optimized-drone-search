@@ -24,7 +24,9 @@ the free empty drones to send back, r, minimising
     H  loaded drones          F  drones already flying back
     U  people waiting         S  drones searching
     E  = n * min(1, M_top / M_rem)       (finds="density", the default)
-         n      unfound people
+         n      people believed still unfound: expected_people minus people
+                found so far (expected_people defaults to the true count; a
+                scenario with a random count passes only its mean)
          M_rem  prior mass still to search: unclaimed cells, cells claimed
                 but not yet searched, and the unsearched part of cells in
                 progress
@@ -164,6 +166,7 @@ class ContinuousModel(DroneSearchModel):
                  depot_point: tuple[float, float] | None = None,
                  search_cells=None, people_layout=None, density=None,
                  search_en_route: bool = True, finds: str | None = None,
+                 expected_people: float | None = None,
                  record: bool = False, check: bool = False, seed: int | None = None):
         super().__init__(n_drones, grid_size, n_people, cell_area=cell_area,
                          start_with_supplies=start_with_supplies,
@@ -178,6 +181,8 @@ class ContinuousModel(DroneSearchModel):
         self.record = record
         self.check = check
         self.search_en_route = search_en_route
+        # what the planner believes the head count is (the true count unless told otherwise)
+        self.expected_people = float(n_people if expected_people is None else expected_people)
         if finds is not None:
             self.finds = finds
         if self.finds not in ("density", "uniform"):
@@ -306,23 +311,29 @@ class ContinuousModel(DroneSearchModel):
         """Time for the whole fleet to finish the remaining search."""
         return self.remaining_area(t) / self.A * self.tau / len(self.drones)
 
+    @property
+    def believed_unfound(self) -> float:
+        """n for planning: expected head count minus people found so far, at least 0."""
+        return max(0.0, self.expected_people - (len(self.people) - self.n_unfound))
+
     def expected_finds(self, searchers: int, area: float, mass: float | None = None) -> float:
         """Expected people found over the next T by `searchers` drones.
 
         finds="density": n * (mass of the best cells they can sweep) / (mass left).
         finds="uniform": n * (area they can sweep) / (area left).
         """
-        if self.n_unfound == 0:
+        n = self.believed_unfound
+        if n <= 0:
             return 0.0
         if self.finds == "uniform":
             if area <= EPS:
                 return 0.0
             swept = searchers * self.A * self.T / self.tau
-            return self.n_unfound * min(1.0, swept / area)
+            return n * min(1.0, swept / area)
         mass = self.remaining_mass() if mass is None else mass
         if mass <= 0:
             return 0.0
-        return self.n_unfound * min(1.0, self._top_mass(searchers * self.T / self.tau) / mass)
+        return n * min(1.0, self._top_mass(searchers * self.T / self.tau) / mass)
 
     # --------------------------------------------------------------- decision
 
@@ -355,8 +366,8 @@ class ContinuousModel(DroneSearchModel):
             _, r, S = best
             mode = "balance"
 
-        self.decisions.append(Decision(t, self.n_unfound, R, self.expected_finds(S, R, M),
-                                       H, F, U, S, r, mode))
+        self.decisions.append(Decision(t, round(self.believed_unfound), R,
+                                       self.expected_finds(S, R, M), H, F, U, S, r, mode))
         return empty[:r]
 
     # ------------------------------------------------------------- bookkeeping
@@ -716,7 +727,7 @@ class ContinuousFindThenFetch(ContinuousModel):
         r = min(len(empty), max(0, U - F))
         S = self.searching() + min(len(free) - r, len(self.unsearched))
         R = self.remaining_area(t)
-        self.decisions.append(Decision(t, self.n_unfound, R, self.expected_finds(S, R),
+        self.decisions.append(Decision(t, round(self.believed_unfound), R, self.expected_finds(S, R),
                                        self.loaded_available(), F, U, S, r,
                                        "fetch-found"))
         return empty[:r]
@@ -755,14 +766,13 @@ class ContinuousGreedyDensity(ContinuousModel):
         return self._cells[idx[int(np.argmax(rate))]]   # ties: first in (row, column) order
 
 
+# the algorithms offered in the dashboard, benchmarks and CLIs; the other classes above
+# (keep searching, uniform E, greedy density) stay importable for reference and tests
 CONTINUOUS_ALGORITHMS: dict[str, type[ContinuousModel]] = {
     "expected": ContinuousModel,
-    "expected-uniform": ContinuousExpectedUniform,
-    "keep": ContinuousKeepSearching,
     "brute": ContinuousFindThenFetch,
-    "greedy-density": ContinuousGreedyDensity,
 }
 
-# the peak-group variants live in peaks_model.py, which imports this module and
+# the peak-group model lives in peaks_model.py, which imports this module and
 # adds itself to CONTINUOUS_ALGORITHMS (works whichever module is imported first)
 import peaks_model  # noqa: E402,F401

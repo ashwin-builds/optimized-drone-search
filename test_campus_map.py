@@ -240,7 +240,7 @@ def test_staging_areas_need_the_real_map():
 
 
 @real_map
-@pytest.mark.parametrize("key", ["expected", "brute", "greedy-density", "peaks-best"])
+@pytest.mark.parametrize("key", ["expected", "brute", "peaks-best"])
 def test_staging_area_runs_with_checks_and_beats_redmond(key):
     done = {}
     for depot in ("redmond", "rainier_vista"):

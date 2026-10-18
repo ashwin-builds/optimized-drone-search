@@ -28,10 +28,10 @@ from pathlib import Path
 
 from benchmark import BenchmarkConfig, run_benchmark, summarize_rows
 from continuous_model import CONTINUOUS_ALGORITHMS, STATUSES
-from metrics import METRICS, curves, summarize
+from metrics import COMPLETION_FRAC, METRICS, curves, summarize
 from campus_map import DATA_PATH
 from scenario import (CAMPUS_CHOICES, DEPOT_CHOICES, DEPOT_DISTANCE_KM, DEPOT_NAMES, STAGING_LONLAT,
-                      Scenario)
+                      Scenario, draw_people)
 
 WEB_DIR = Path(__file__).parent / "web"
 MAX_RUN_PEOPLE = 5000
@@ -39,7 +39,7 @@ MAX_BENCH_JOBS = 20000
 # the demo: UW map, supplies from Redmond vs staged on campus at Rainier Vista
 DEMO = {"drones": 20, "people": 250, "seed": 0, "campus": "auto", "cell_side": 25.0,
         "depot": "rainier_vista", "compare_depots": ["redmond", "rainier_vista"],
-        "algos": ["expected", "greedy-density", "peaks-best", "brute"], "baseline": "brute",
+        "algos": ["expected", "peaks-best", "brute"], "baseline": "brute",
         "runs": 8}
 JOBS: dict[str, dict] = {}
 
@@ -85,10 +85,11 @@ def run_scenario(params: dict) -> dict:
     if not (1 <= n <= 500) or not (0 <= p <= MAX_RUN_PEOPLE) or not algos:
         raise ValueError("drones must be 1-500, people 0-5000, and at least one algorithm")
     results = {}
+    actual = draw_people(p, seed)   # p is the expected head count; this seed's draw
     for key in algos:
         cls = CONTINUOUS_ALGORITHMS[key]
-        model = cls(n, n_people=p, seed=seed, record=True, check=bool(params.get("check")),
-                    **sc.model_kwargs())
+        model = cls(n, n_people=actual, expected_people=p, seed=seed, record=True,
+                    check=bool(params.get("check")), **sc.model_kwargs())
         model.run()
         # [x, y, found, drone sent, supplied]
         people = [[_r(p.xy[0]), _r(p.xy[1]), _r(p.found_step),
@@ -110,8 +111,8 @@ def run_scenario(params: dict) -> dict:
                                _r(d.R, 4)] for d in model.decisions],
             },
         }
-    return {"scenario": scenario_info(sc), "drones": n, "people": p, "seed": seed,
-            "results": results}
+    return {"scenario": scenario_info(sc), "drones": n, "people": actual, "expected_people": p,
+            "completion_frac": COMPLETION_FRAC, "seed": seed, "results": results}
 
 
 def depot_label(key: str) -> str:
@@ -219,6 +220,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "depots": {k: depot_label(k) for k in DEPOT_CHOICES},
                 "staging_depots": list(STAGING_LONLAT),
                 "demo": DEMO,
+                "completion_frac": COMPLETION_FRAC,
                 "metrics": METRICS,
                 "statuses": STATUSES,
                 "map_available": DATA_PATH.exists(),

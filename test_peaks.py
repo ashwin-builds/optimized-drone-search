@@ -4,6 +4,7 @@ Tests for the peak-group model (peaks_model.py) on small made-up campuses.
 
 import math
 import pickle
+from functools import partial
 
 import pytest
 from shapely.geometry import Polygon, mapping
@@ -12,8 +13,17 @@ import campus_map
 from campus_map import CampusMap
 from continuous_model import CONTINUOUS_ALGORITHMS, SimulationInvariantError
 from density import DensityLayout, DensitySurface, VisitorRow
-from peaks_model import (PEAK_ALGORITHMS, PeakGroupModel, PeaksFixedGroup, PeaksMassGroup,
-                         share_out)
+from peaks_model import REJOIN_MODES, SIZE_STRATEGIES, PeakGroupModel, PeaksBest, share_out
+
+
+def variant(size, rejoin):
+    return partial(PeakGroupModel, size_strategy=size, rejoin=rejoin)
+
+
+VARIANTS = {f"{size}-{rejoin}": variant(size, rejoin)
+            for size in SIZE_STRATEGIES for rejoin in REJOIN_MODES}
+PeaksFixedGroup = VARIANTS["fixed-group"]
+PeaksMassGroup = VARIANTS["mass-group"]
 
 LON0, LAT0 = -122.31, 47.65
 M_PER_DEG_LAT = math.pi / 180 * campus_map.EARTH_R
@@ -240,7 +250,7 @@ def test_rejoin_group_after_dissolve_becomes_a_scavenger():
 
 def test_rejoin_scavengers_turns_every_depot_runner_into_a_scavenger():
     grid, s = world(ROW)
-    m = make(PEAK_ALGORITHMS["peaks-fixed-scavengers"], grid, s, n=10)
+    m = make(VARIANTS["fixed-scavengers"], grid, s, n=10)
     d = m.drones[3]
     d.has_supplies = False
     m._send_back(d, 0.0)
@@ -261,10 +271,10 @@ def test_no_stall_when_groups_claim_every_cell():
     assert m.n_supplied == 30
 
 
-@pytest.mark.parametrize("key", list(PEAK_ALGORITHMS))
+@pytest.mark.parametrize("key", list(VARIANTS))
 def test_every_variant_runs_with_checks(key):
     grid, s = world(FIVE)
-    m = make(PEAK_ALGORITHMS[key], grid, s, n=23, p=40, record=True, seed=3)
+    m = make(VARIANTS[key], grid, s, n=23, p=40, record=True, seed=3)
     m.run()
     assert m.n_supplied == 40
     assert set(m.found_by) == {p.id for p in m.people}
@@ -284,12 +294,12 @@ def test_seeded_runs_are_deterministic():
     assert runs[0].found_by == runs[1].found_by
 
 
-def test_variants_are_registered_and_picklable():
-    for key, cls in PEAK_ALGORITHMS.items():
-        assert CONTINUOUS_ALGORITHMS[key] is cls
-        assert pickle.loads(pickle.dumps(cls)) is cls
-        size, rejoin = key.split("-")[1:]
-        assert (cls.size_strategy, cls.rejoin) == (size, rejoin)
+def test_only_the_best_setting_is_registered_and_picklable():
+    assert CONTINUOUS_ALGORITHMS["peaks-best"] is PeaksBest
+    assert not any(k.startswith("peaks-") and k != "peaks-best" for k in CONTINUOUS_ALGORITHMS)
+    assert pickle.loads(pickle.dumps(PeaksBest)) is PeaksBest
+    assert (PeaksBest.size_strategy, PeaksBest.rejoin, PeaksBest.split_rule) == \
+        ("reserve", "scavengers", "basin")
 
 
 def test_check_catches_a_group_drone_outside_its_basin():
@@ -328,4 +338,4 @@ def test_peaks_model_can_be_imported_first():
     out = subprocess.run([sys.executable, "-c", "import peaks_model, continuous_model as c; "
                           "print(sorted(k for k in c.CONTINUOUS_ALGORITHMS if k.startswith('peaks')))"],
                          capture_output=True, text=True, cwd=__import__("os").path.dirname(__file__))
-    assert out.returncode == 0 and "peaks-mass-group" in out.stdout
+    assert out.returncode == 0 and "peaks-best" in out.stdout

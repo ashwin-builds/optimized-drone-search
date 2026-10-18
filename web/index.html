@@ -29,7 +29,8 @@
       </div>
       <p class="note">Runs the UW scenario with supplies staged at Rainier Vista, one of the campus
         Mass Assembly Areas UW lists for staging relief supplies, and compares it with flying them
-        in from Redmond. The replay below shows the staged run.</p>
+        in from Redmond. Completion is the time 80% of the expected number of people are found;
+        each run draws its own head count around that expectation. The replay below shows the staged run.</p>
       <p id="demo-status" class="status" role="status"></p>
       <div id="demo-output" hidden>
         <p id="demo-headline" class="headline"></p>
@@ -39,7 +40,7 @@
     </div>
     <form id="run-form" class="controls">
       <label>Drones <input name="drones" type="number" min="1" max="500" value="20"></label>
-      <label>People <input name="people" type="number" min="0" max="5000" value="60"></label>
+      <label>Expected people <input name="people" type="number" min="0" max="5000" value="250" title="mean; each run draws its own count (normal, SD 10%)"></label>
       <label>Depot <select name="depot"></select></label>
 <label>Map <select name="campus">
         <option value="auto" selected>Real UW campus if downloaded</option>
@@ -109,7 +110,7 @@
   <section id="tab-bench" class="tabpanel" hidden>
     <form id="bench-form" class="controls">
       <label>Drones <input name="drones" value="10 20 50" title="space-separated list"></label>
-      <label>People <input name="people" value="60 250" title="space-separated list"></label>
+      <label>Expected people <input name="people" value="60 250" title="space-separated list of means"></label>
       <label>Seeds per setting <input name="runs" type="number" min="1" max="1000" value="20"></label>
       <label>Depot <select name="depot"></select></label>
 <label>Map <select name="campus">
@@ -130,7 +131,7 @@
       <div class="grid2">
         <div class="card">
           <div class="card-head">
-            <h2>Completion time vs drones</h2>
+            <h2>Time to find 80% of expected people vs drones</h2>
             <label>People <select id="bench-people"></select></label>
           </div>
           <div class="chart"><canvas id="chart-bench-completion"></canvas></div>

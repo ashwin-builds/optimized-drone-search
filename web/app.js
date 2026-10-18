@@ -13,7 +13,7 @@ const GROUP_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#0
 const algoColor = (key) => css(ALGO_VAR[key] ||
   (key.startsWith("peaks-fixed") ? "--series-6" : key.startsWith("peaks-mass") ? "--series-7"
     : key.startsWith("peaks-reserve") ? "--series-8" : "--text-secondary"));
-const DEFAULT_ALGOS = new Set(["expected", "greedy-density", "peaks-mass-group"]);
+const DEFAULT_ALGOS = new Set(["expected", "peaks-best", "brute"]);
 
 function el(tag, attrs = {}, text) {
   const node = document.createElement(tag);
@@ -36,6 +36,7 @@ const fmt = (v, d = 1) => (v == null || !isFinite(v) ? "–" : Number(v).toFixed
 const pm = (v, ci, d = 1, scale = 1, signed = false) =>
   v == null ? "–"
     : `${signed && v > 0 ? "+" : ""}${(v / scale).toFixed(d)} ± ${ci == null ? "–" : (ci / scale).toFixed(d)}`;
+const pct = () => `${Math.round(state.options.completion_frac * 100)}%`;
 const algoRank = (key) => Object.keys(state.options.algorithms).indexOf(key);
 
 async function api(path, body) {
@@ -209,7 +210,7 @@ function renderDemo(status) {
   head.append(el("th", {}, "Algorithm"));
   for (const depot of depots) {
     head.append(el("th", {}, `${status.summary[depot].name}: mean wait (min)`),
-                el("th", {}, `${status.summary[depot].name}: everyone served (h)`));
+                el("th", {}, `${status.summary[depot].name}: ${pct()} found`));
   }
   table.appendChild(el("thead")).append(head);
   const body = table.appendChild(el("tbody"));
@@ -228,8 +229,9 @@ function renderDemo(status) {
     tr.append(name);
     for (const depot of depots) {
       const s = by[depot][a];
-      for (const [m, scale, dp] of [["mean_wait", 1, 1], ["completion", 60, 2]]) {
-        const cell = el("td", {}, pm(s[m], s[`${m}_ci`], dp, scale));
+      for (const [m, show] of [["mean_wait", (v, ci) => pm(v, ci, 1)],
+                               ["completion", (v, ci) => `${clock(v)} ± ${fmt(ci)} min`]]) {
+        const cell = el("td", {}, show(s[m], s[`${m}_ci`]));
         if (Math.abs(s[m] - best[`${depot}:${m}`]) < 1e-9) cell.classList.add("best");
         tr.append(cell);
       }
@@ -244,11 +246,12 @@ function renderDemo(status) {
   $("#demo-headline").textContent =
     `With supplies staged at ${status.summary[d.depot].name}, people found by ${names[ours].name} wait ` +
     `${fmt(here[ours].mean_wait)} min on average for their kit, against ${fmt(base.mean_wait)} min with ` +
-    `${names[d.baseline].name}; everyone is served in ${fmt(here[ours].completion / 60, 2)} h ` +
-    `(${fmt(base.completion / 60, 2)} h for ${names[d.baseline].name}, ` +
-    `${fmt(far[ours].completion / 60, 2)} h when supplies come from ${status.summary[depots[0]].name}).`;
+    `${names[d.baseline].name}. ${pct()} of the expected people are found after ${clock(here[ours].completion)} ` +
+    `(${clock(base.completion)} for ${names[d.baseline].name}, ` +
+    `${clock(far[ours].completion)} when supplies come from ${status.summary[depots[0]].name}).`;
   $("#demo-note").textContent =
-    `${d.drones} drones, ${d.people} people needing aid, the same ${status.config.runs} seeds for every ` +
+    `${d.drones} drones, ${d.people} people expected to need aid (each seed draws its own count), ` +
+    `the same ${status.config.runs} seeds for every ` +
     `algorithm and depot (± is the 95% confidence interval). Bold marks the best in each column.`;
   $("#demo-output").hidden = false;
 }
@@ -273,9 +276,10 @@ function renderRun() {
     (sc.depot_on_campus
       ? `supplies staged on campus at ${sc.depot_name} (${sc.trip_time_min.toFixed(1)} min to restock) · `
       : `${sc.trip_time_min.toFixed(1)} min round trip to ${sc.depot_name} from the campus edge · `) +
-    `${state.run.drones} drones, ${state.run.people} people, seed ${state.run.seed}`;
+    `${state.run.drones} drones, ${state.run.people} people this run ` +
+    `(expected ${state.run.expected_people}), seed ${state.run.seed}`;
   $("#run-output").hidden = false;
-  state.tMax = Math.max(...state.order.map((k) => results[k].metrics.completion), 1e-6);
+  state.tMax = Math.max(...state.order.map((k) => results[k].metrics.all_served), 1e-6);
   renderMetricsTable();
   renderTimeTable();
   renderCurves();
@@ -288,7 +292,8 @@ const METRIC_ROWS = [
   ["p90_wait", "90th percentile wait (min)", (v) => fmt(v)],
   ["max_wait", "Longest wait (min)", (v) => fmt(v)],
   ["mean_supplied_at", "Average time to be served", clock],
-  ["completion", "Everyone served", clock],
+  ["completion", "80% of expected people found", clock],
+  ["all_served", "Everyone served", clock],
   ["all_found", "Everyone found", clock],
   ["trips", "Depot round trips", (v) => fmt(v, 0)],
   ["unused_kits", "Kits fetched but never used", (v) => fmt(v, 0)],
@@ -815,16 +820,16 @@ function renderBench() {
   const table = $("#bench-table");
   table.replaceChildren();
   const head = el("tr");
-  for (const h of ["Algorithm", "Everyone served (h)", "Mean wait (min)", "Longest wait (min)",
+  for (const h of ["Algorithm", `${pct()} found (h)`, "Mean wait (min)", "Longest wait (min)",
                    "Everyone found (h)", "Unused kits",
-                   `Δ served vs ${names[config.baseline].name} (min)`, "Δ mean wait (min)", "Faster in"]) {
+                   `Δ ${pct()} found vs ${names[config.baseline].name} (min)`, "Δ mean wait (min)", "Faster in"]) {
     head.append(el("th", {}, h));
   }
   table.appendChild(el("thead")).append(head);
   const body = table.appendChild(el("tbody"));
   let group = null;
   for (const s of summary) {
-    const g = `${s.drones} drones · ${s.people} people · ${s.runs} seeds`;
+    const g = `${s.drones} drones · ${s.people} expected people · ${s.runs} seeds`;
     if (g !== group) {
       group = g;
       const tr = el("tr", { class: "group" });
@@ -862,7 +867,7 @@ function renderBenchCharts() {
   const algos = [...new Set(rows.map((s) => s.algo))];
   const names = state.options.algorithms;
   for (const [id, metric, label, scale] of [
-    ["chart-bench-completion", "completion", "Everyone served (hours)", 60],
+    ["chart-bench-completion", "completion", `${pct()} of expected people found (hours)`, 60],
     ["chart-bench-wait", "mean_wait", "Mean wait (minutes)", 1],
   ]) {
     state.charts[id]?.destroy();

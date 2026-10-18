@@ -65,7 +65,7 @@ assignment is unchanged, restricted to eligible drone/person pairs.
 Depot runs
 ----------
 Each group balances |H + F + r - (U + E)| over its own drones: U its waiting
-people, E = n_unfound * (mass of the best cells of its basin its S drones can
+people, E = n * (mass of the best cells of its basin its S drones can
 sweep in T) / (prior mass left). The scavengers run one pooled balance: E over
 unclaimed territory, U = their own waiting people plus each group's waiting
 people beyond that group's H + F.
@@ -75,7 +75,8 @@ After a depot run (rejoin):
               with fewer drones (repeatedly); if it dissolved, scavenge
   scavengers  every drone sent to the depot becomes a scavenger
 
-The six size x rejoin combinations are registered as peaks-<size>-<rejoin>.
+Every size x rejoin combination is available through the size_strategy and rejoin
+options; only PeaksBest ("peaks-best") is registered as an algorithm.
 """
 
 from __future__ import annotations
@@ -251,9 +252,10 @@ class PeakGroupModel(ContinuousModel):
         return float(cum[whole] + (n_cells - whole) * (cum[whole + 1] - cum[whole]))
 
     def _finds(self, which, idx, searchers: int, mass: float) -> float:
-        if self.n_unfound == 0 or mass <= 0:
+        n = self.believed_unfound
+        if n <= 0 or mass <= 0:
             return 0.0
-        return self.n_unfound * min(1.0, self._top_of(which, idx, searchers * self.T / self.tau) / mass)
+        return n * min(1.0, self._top_of(which, idx, searchers * self.T / self.tau) / mass)
 
     def _members(self, gid: int | None) -> list[CDrone]:
         return [d for d in self.drones if self.drone_group[d.id] == gid]
@@ -476,7 +478,7 @@ class PeakGroupModel(ContinuousModel):
             r, S, E = self._balance(H, F, U, busy, len(g_free), g_empty,
                                     lambda s: self._finds(("basin", g.peak), idx, s, mass))
             returners += g_empty[:r]
-            self.decisions.append(Decision(t, self.n_unfound, 0.0, E, H, F, U, S, r, f"group {g.id}"))
+            self.decisions.append(Decision(t, round(self.believed_unfound), 0.0, E, H, F, U, S, r, f"group {g.id}"))
 
         scav = self._members(None)
         s_free = [d for d in free if self.drone_group[d.id] is None]
@@ -490,7 +492,7 @@ class PeakGroupModel(ContinuousModel):
             r, S, E = self._balance(H, F, U, busy, len(s_free), s_empty,
                                     lambda s: self._finds(("free",), idx, s, mass))
             returners += s_empty[:r]
-            self.decisions.append(Decision(t, self.n_unfound, 0.0, E, H, F, U, S, r, "scavengers"))
+            self.decisions.append(Decision(t, round(self.believed_unfound), 0.0, E, H, F, U, S, r, "scavengers"))
         return returners
 
     @staticmethod
@@ -577,29 +579,6 @@ class PeakGroupModel(ContinuousModel):
                 fail(f"peak {pid} claimed by group {gid}, which holds peak {active[gid].peak}")
 
 
-def _variant(size: str, rejoin: str) -> type[PeakGroupModel]:
-    return type(f"Peaks{size.title()}{rejoin.title()}", (PeakGroupModel,), {
-        "name": f"peaks {size}/{rejoin}", "size_strategy": size, "rejoin": rejoin,
-        "__module__": __name__, "__doc__": f"Peak groups: {size} sizes, rejoin {rejoin}."})
-
-
-# module-level classes so benchmark.py's process pool can pickle them
-PeaksFixedGroup = _variant("fixed", "group")
-PeaksFixedScavengers = _variant("fixed", "scavengers")
-PeaksMassGroup = _variant("mass", "group")
-PeaksMassScavengers = _variant("mass", "scavengers")
-PeaksReserveGroup = _variant("reserve", "group")
-PeaksReserveScavengers = _variant("reserve", "scavengers")
-
-PEAK_ALGORITHMS = {
-    "peaks-fixed-group": PeaksFixedGroup,
-    "peaks-fixed-scavengers": PeaksFixedScavengers,
-    "peaks-mass-group": PeaksMassGroup,
-    "peaks-mass-scavengers": PeaksMassScavengers,
-    "peaks-reserve-group": PeaksReserveGroup,
-    "peaks-reserve-scavengers": PeaksReserveScavengers,
-}
-
 class PeaksBest(PeakGroupModel):
     """The best-performing peak-group settings so far (shown in the demo)."""
     name = "peak groups (best)"
@@ -612,5 +591,4 @@ class PeaksBest(PeakGroupModel):
 # register with the simulator's algorithm table (see the end of continuous_model.py)
 from continuous_model import CONTINUOUS_ALGORITHMS  # noqa: E402
 
-CONTINUOUS_ALGORITHMS.update(PEAK_ALGORITHMS)
 CONTINUOUS_ALGORITHMS["peaks-best"] = PeaksBest

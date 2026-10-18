@@ -11,14 +11,14 @@ python campus_map.py fetch            # one-off: real UW campus from OpenStreetM
 python server.py                      # dashboard at http://localhost:8000
 python benchmark.py --drones 10 20 50 --people 60 250 --runs 30 --csv runs.csv
 python scenario.py -n 20 -p 60        # quick comparison table
-python continuous_viz.py -n 20 -p 60 --algo expected keep brute   # matplotlib replay
+python continuous_viz.py -n 20 -p 60 --algo expected peaks-best brute   # matplotlib replay
 pytest
 ```
 
 | File | What it is |
 |---|---|
-| `continuous_model.py` | Event-driven simulator and the algorithms (`expected`, `expected-uniform`, `keep`, `brute`, `greedy-density`) |
-| `peaks_model.py` | Peak-group search: groups work density peaks, scavengers take the rest (`peaks-*`) |
+| `continuous_model.py` | Event-driven simulator and the algorithms (`expected`, `brute`) |
+| `peaks_model.py` | Peak-group search: groups work density peaks, scavengers take the rest (`peaks-best`) |
 | `scenario.py` | UW scenario: depot distances, drone speeds; real map or square approximation |
 | `campus_map.py` | Downloads the UW boundary and building footprints from OpenStreetMap and rasterises them |
 | `density.py`, `data/building_visitors.csv` | Prior density surface of where people are (the searcher's belief), its peaks and basins |
@@ -55,7 +55,7 @@ run is the flight across campus plus the 5 min restock; these depots need the re
 
 **Run demo** on the dashboard runs 20 drones / 250 people on the UW map with supplies at
 Rainier Vista (the replay), and compares Redmond with Rainier Vista over 8 seeds for
-`expected`, `greedy-density`, `peaks-best` and find-then-fetch, leading with mean wait.
+`expected`, `peaks-best` and find-then-fetch, leading with mean wait.
 `peaks-best` is the best peak-group setting so far (reserve sizes, runners rejoin as
 scavengers, `split_rule=basin`).
 
@@ -103,17 +103,30 @@ itself, so it is exactly right.
 | Algorithm | What it does |
 |---|---|
 | `expected` | depot runs balance \|H + F + r − (U + E)\|; drones search the nearest unclaimed cell |
-| `expected-uniform` | the same with the old uniform E, for reference |
-| `keep` | expected value, but nobody returns while the fleet can finish searching within a trip |
+| `peaks-best` | peak groups (below) with the best settings found: reserve sizes, runners rejoin as scavengers, `split_rule=basin` |
 | `brute` | find-then-fetch: fetch only for people already found |
-| `greedy-density` | each free drone takes the cell with the best prob / (travel + tau); expected-value depot runs |
-| `peaks-<size>-<rejoin>` | peak groups (below); size `fixed`, `mass` or `reserve`, rejoin `group` or `scavengers` |
+
+These are the only registered algorithms. The keep-searching, uniform-E and
+greedy-density classes (`ContinuousKeepSearching`, `ContinuousExpectedUniform`,
+`ContinuousGreedyDensity`) stay in `continuous_model.py` for reference and tests.
 
 ```bash
 python benchmark.py --drones 10 20 50 --people 60 250 --runs 30 \
-    --algos expected greedy-density "expected:search_en_route=False" \
-    --baseline expected --compare-to greedy-density --placement density
+    --algos expected peaks-best "expected:search_en_route=False" \
+    --baseline brute --compare-to expected --placement density
 ```
+
+### People and completion
+
+`--people` (and the dashboard's Expected people) is the **expected** number of
+people needing aid. Each seed draws its own count from a normal distribution
+around it (SD 10% of the mean); a draw below 80% of the mean is raised to 85%.
+Every algorithm and depot sees the same draw for a seed, and the planners only
+know the mean: E uses (expected people − people found so far).
+
+**Completion** is the time 80% of the expected number of people have been
+found (`metrics.COMPLETION_FRAC`). The time everyone is served is reported
+separately as `all_served`.
 
 ## Peak-group search (`peaks_model.py`)
 
@@ -138,10 +151,11 @@ balance.
 | `split_rule` | `cell` (spec default): best single in-basin cell rate vs moving half the group, which at t = 0 almost always splits at once · `basin`: the group's rate on its own basin vs half the group on the neighbour |
 
 Every split, move and dissolve is in `model.group_log`; the replay log and both
-viewers colour drones by group (grey = scavenger). Variants with options:
+viewers colour drones by group (grey = scavenger). Other settings run as
+options on `peaks-best`:
 
 ```bash
 python benchmark.py --drones 20 --people 250 --runs 30 \
-    --algos peaks-mass-group "peaks-mass-group:k_frac=0.05" greedy-density \
-    --baseline expected --compare-to greedy-density
+    --algos peaks-best "peaks-best:k_frac=0.2" "peaks-best:size_strategy=mass,rejoin=group" \
+    --baseline expected
 ```
