@@ -9,12 +9,18 @@ Times are in the model's time unit (minutes for the UW scenario).
 
 from __future__ import annotations
 
+import math
 import statistics
 
 from continuous_model import STATUSES, ContinuousModel
 
+# completion: the time COMPLETION_FRAC of the expected head count has been served (given a kit)
+COMPLETION_FRAC = 0.8
+
 METRICS = {
-    "completion": "time the last person is supplied",
+    "completion": f"time {COMPLETION_FRAC:.0%} of the expected number of people are served",
+    "all_served": "time the last person is supplied",
+    "n_people": "people in this run",
     "all_found": "time the last person is found",
     "mean_wait": "mean time from found to supplied",
     "p90_wait": "90th percentile of found-to-supplied",
@@ -36,15 +42,25 @@ def _percentile(values: list[float], q: float) -> float:
     return ordered[lo] + (ordered[hi] - ordered[lo]) * (pos - lo)
 
 
+def completion_time(model: ContinuousModel, frac: float = COMPLETION_FRAC) -> float:
+    """Time the ceil(frac * expected_people)-th person is served (the last one if fewer)."""
+    served = sorted(p.supplied_step for p in model.people if p.supplied_step is not None)
+    if not served:
+        return 0.0
+    target = max(1, math.ceil(frac * model.expected_people - 1e-9))
+    return served[min(target, len(served)) - 1]
+
+
 def summarize(model: ContinuousModel) -> dict:
     if not model.done:
         raise ValueError("run the model to completion first")
     people = model.people
     waits = [p.supplied_step - p.found_step for p in people]
-    end = model.completion_time
     total = sum(sum(d.time_in.values()) for d in model.drones) or 1.0
     row = {
-        "completion": end,
+        "completion": completion_time(model),
+        "all_served": model.completion_time,
+        "n_people": len(people),
         "all_found": max((p.found_step for p in people), default=0.0),
         "mean_wait": statistics.mean(waits) if waits else 0.0,
         "p90_wait": _percentile(waits, 0.9),

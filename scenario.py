@@ -34,17 +34,24 @@ Derived:
 
 Drones leave and re-enter campus at the edge point facing the depot, and
 start the run there, loaded.
+
+Staging areas (real map only): depot="rainier_vista", "hub_yard", "denny_yard",
+"parrington_lawn" are campus Mass Assembly Areas where relief supplies would be
+staged, and "uw_tower" is next to the Emergency Operations Center just west of
+campus (see campus_map.STAGING_LONLAT). An on-campus depot is its own exit, so a
+depot run is the flight across campus plus the 5 min restock.
 """
 
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass
 from pathlib import Path
 
 from functools import lru_cache
 
-from campus_map import DATA_PATH, Grid, PeopleLayout, load_grid
+from campus_map import DATA_PATH, DEPOT_LONLAT, STAGING_LONLAT, Grid, PeopleLayout, load_grid
 from density import VISITORS_PATH, DensityLayout, DensitySurface
 
 CAMPUS_AREA_M2 = 703 * 4046.86
@@ -52,6 +59,15 @@ CAMPUS_SIDE_M = math.sqrt(CAMPUS_AREA_M2)
 DEPOT_DISTANCE_KM = {"redmond": 13.8, "bothell": 14.3}
 # unit vector (east, north) from campus to depot, from straight-line coordinates
 DEPOT_DIRECTION = {"redmond": (0.988, 0.150), "bothell": (0.592, 0.806)}
+# people per run: normal around the expected (mean) count, SD = PEOPLE_SD_FRAC * mean;
+# a draw below COMPLETION_FRAC * mean (metrics.py) is raised to PEOPLE_FLOOR_FRAC * mean,
+# so the completion target is always reachable. Planners only know the mean.
+PEOPLE_SD_FRAC = 0.10
+PEOPLE_FLOOR_FRAC = 0.85
+DEPOT_CHOICES = tuple(DEPOT_LONLAT)   # staging areas need the real map
+DEPOT_NAMES = {"redmond": "Redmond", "bothell": "Bothell", "rainier_vista": "Rainier Vista",
+               "hub_yard": "HUB Yard", "denny_yard": "Denny Yard",
+               "parrington_lawn": "Parrington Lawn", "uw_tower": "UW Tower"}
 
 
 CAMPUS_CHOICES = ("auto", "uw", "square")
@@ -89,6 +105,20 @@ class Scenario:
     search_speed_mps: float = 5.0
     population: int = 50_000
     aid_fraction: float = 0.005
+
+    def __post_init__(self):
+        if self.depot not in DEPOT_CHOICES:
+            raise ValueError(f"depot must be one of {DEPOT_CHOICES}")
+        if self.depot in STAGING_LONLAT and not self.uses_map:
+            raise ValueError(f"the {self.depot} staging area needs the real campus map")
+
+    @property
+    def depot_name(self) -> str:
+        return DEPOT_NAMES.get(self.depot, self.depot)
+
+    @property
+    def depot_on_campus(self) -> bool:
+        return self.uses_map and self.map_grid[1].exit_to_depot_m == 0.0
 
     # ---------------------------------------------------------------- map
 
@@ -220,15 +250,27 @@ class Scenario:
             where = ("  map: square approximation (run `python campus_map.py fetch` for the real campus)\n"
                      f"  grid {self.k}x{self.k} cells of {self.cell_side_m:.1f} m "
                      f"({self.k ** 2 * self.cell_area_km2:.2f} km^2)\n")
-        return (f"UW Seattle campus, supplies from {self.depot.title()} "
-                f"({self.edge_to_depot_km:.1f} km from the campus exit)\n"
+        source = (f"{self.depot_name} (staging area on campus)" if self.depot_on_campus else
+                  f"{self.depot_name} ({self.edge_to_depot_km:.1f} km from the campus exit)")
+        return (f"UW Seattle campus, supplies from {source}\n"
                 + where +
                 f"  search {self.search_time_min * 60:.1f} s/cell "
                 f"({self.n_search_cells * self.search_time_min:.0f} drone-min for the campus), "
                 f"round trip {self.trip_time_min:.1f} min from the campus edge\n"
-                f"  people needing aid: {people}"
+                f"  expected people needing aid: {people}"
                 + (f" ({self.aid_fraction:.2%} of {self.population:,})"
-                   if people == self.n_people else " (set directly)"))
+                   if people == self.n_people else " (set directly)")
+                + f"; each run draws a normal count, SD {PEOPLE_SD_FRAC:.0%} of that")
+
+
+def draw_people(mean: float, seed: int) -> int:
+    """People in the run with this seed: the same draw for every algorithm and depot."""
+    from metrics import COMPLETION_FRAC
+
+    n = round(random.Random(f"people:{seed}").gauss(mean, PEOPLE_SD_FRAC * mean))
+    if n < COMPLETION_FRAC * mean:
+        n = round(PEOPLE_FLOOR_FRAC * mean)
+    return max(0, n)
 
 
 def main():
@@ -236,12 +278,14 @@ def main():
     import statistics
 
     from continuous_model import CONTINUOUS_ALGORITHMS
+    from metrics import COMPLETION_FRAC, completion_time
 
     parser = argparse.ArgumentParser(description="Run both algorithms on the UW scenario.")
     parser.add_argument("-n", type=int, default=20, help="number of drones (default 20)")
     parser.add_argument("-p", type=int, default=None,
-                        help="people needing aid (default: population x aid fraction)")
-    parser.add_argument("--depot", choices=sorted(DEPOT_DISTANCE_KM), default="redmond")
+                        help="expected people needing aid, the mean of each run's draw "
+                             "(default: population x aid fraction)")
+    parser.add_argument("--depot", choices=DEPOT_CHOICES, default="redmond")
     parser.add_argument("--aid-fraction", type=float, default=0.005)
     parser.add_argument("--cell-side", type=float, default=25.0,
                         help="target cell side in metres (default 25)")
@@ -254,17 +298,21 @@ def main():
                   cell_side_target_m=args.cell_side, campus=args.campus)
     p = sc.n_people if args.p is None else args.p
     print(sc.describe(p))
-    print(f"  drones: {args.n}, people: {p}, runs: {args.runs}\n")
-    print(f"{'algorithm':>16} {'completion (h)':>15} {'wait found->supplied (min)':>27}")
+    print(f"  drones: {args.n}, expected people: {p} (each run draws its own count), "
+          f"runs: {args.runs}\n")
+    print(f"{'algorithm':>18} {f'{COMPLETION_FRAC:.0%} served (h)':>15} "
+          f"{'wait found->supplied (min)':>27}")
     for M in CONTINUOUS_ALGORITHMS.values():
         done, waits = [], []
         for seed in range(args.seed, args.seed + args.runs):
-            m = M(args.n, n_people=p, seed=seed, **sc.model_kwargs())
-            done.append(m.run() / 60)
+            m = M(args.n, n_people=draw_people(p, seed), expected_people=p, seed=seed,
+                  **sc.model_kwargs())
+            m.run()
+            done.append(completion_time(m) / 60)
             if m.people:
                 waits.append(statistics.mean(x.supplied_step - x.found_step for x in m.people))
         w = f"{statistics.mean(waits):.1f}" if waits else "-"
-        print(f"{M.name:>16} {statistics.mean(done):>15.2f} {w:>27}")
+        print(f"{M.name:>18} {statistics.mean(done):>15.2f} {w:>27}")
 
 
 if __name__ == "__main__":

@@ -16,8 +16,8 @@ remaining_mass is the prior over the basin's cells still unclaimed, so
 exhaustion is derived from what has been searched (by anyone), never stored;
 a peak scavengers have already cleared is therefore never picked again.
 
-Group sizes (size_strategy), with m = max(1, n // 10):
-  fixed    m groups of 10 drones (fewer if n < 10); leftover drones scavenge
+Group sizes (size_strategy), with m = max(1, n // group_size), group_size = 10:
+  fixed    m groups of group_size drones (fewer if n is smaller); leftovers scavenge
   mass     m groups sharing all n drones in proportion to peak mass, >= 2 each
   reserve  scavenger_share of the drones scavenge from the start; the rest
            are shared as in "mass"
@@ -33,6 +33,9 @@ drone it re-plans from the free drones' mean position x:
     in-basin rate   max over its basin's unclaimed cells of prob / (travel + tau)
     move rate (q)   remaining_mass(q) / (travel(x -> peak q) + cells_left(q) * tau / (size / 2))
 
+(split_rule="cell", the default; split_rule="basin" instead compares the
+move rate with the group's rate on its own basin, remaining_mass(own) /
+(travel + cells_left(own) * tau / size), so both sides are group rates)
 over candidate peaks q: unclaimed and not exhausted, whose basins border the
 group's basin; if none qualify, the two nearest such peaks. If the best move
 rate beats the in-basin rate the group splits into two halves (lower drone
@@ -62,7 +65,7 @@ assignment is unchanged, restricted to eligible drone/person pairs.
 Depot runs
 ----------
 Each group balances |H + F + r - (U + E)| over its own drones: U its waiting
-people, E = n_unfound * (mass of the best cells of its basin its S drones can
+people, E = n * (mass of the best cells of its basin its S drones can
 sweep in T) / (prior mass left). The scavengers run one pooled balance: E over
 unclaimed territory, U = their own waiting people plus each group's waiting
 people beyond that group's H + F.
@@ -72,7 +75,8 @@ After a depot run (rejoin):
               with fewer drones (repeatedly); if it dissolved, scavenge
   scavengers  every drone sent to the depot becomes a scavenger
 
-The six size x rejoin combinations are registered as peaks-<size>-<rejoin>.
+Every size x rejoin combination is available through the size_strategy and rejoin
+options; only PeaksBest ("peaks-best") is registered as an algorithm.
 """
 
 from __future__ import annotations
@@ -123,16 +127,21 @@ class PeakGroupModel(ContinuousModel):
     k_frac = 0.10
     scavenger_share = 0.3
     group_size = 10
+    split_rule = "cell"      # "cell": best in-basin cell rate; "basin": own-basin group rate
 
     def __init__(self, *args, size_strategy: str | None = None, rejoin: str | None = None,
-                 k_frac: float | None = None, scavenger_share: float | None = None, **kwargs):
+                 k_frac: float | None = None, scavenger_share: float | None = None,
+                 split_rule: str | None = None, group_size: int | None = None, **kwargs):
         super().__init__(*args, **kwargs)
         for name, value in (("size_strategy", size_strategy), ("rejoin", rejoin),
-                            ("k_frac", k_frac), ("scavenger_share", scavenger_share)):
+                            ("k_frac", k_frac), ("scavenger_share", scavenger_share),
+                            ("split_rule", split_rule), ("group_size", group_size)):
             if value is not None:
                 setattr(self, name, value)
-        if self.size_strategy not in SIZE_STRATEGIES or self.rejoin not in REJOIN_MODES:
-            raise ValueError(f"size_strategy in {SIZE_STRATEGIES}, rejoin in {REJOIN_MODES}")
+        if self.size_strategy not in SIZE_STRATEGIES or self.rejoin not in REJOIN_MODES \
+                or self.split_rule not in ("cell", "basin"):
+            raise ValueError(f"size_strategy in {SIZE_STRATEGIES}, rejoin in {REJOIN_MODES}, "
+                             f"split_rule in ('cell', 'basin')")
         if self.surface is None:
             raise ValueError("the peak-group model needs density=<DensitySurface>")
         if self.move_time is None:
@@ -243,9 +252,10 @@ class PeakGroupModel(ContinuousModel):
         return float(cum[whole] + (n_cells - whole) * (cum[whole + 1] - cum[whole]))
 
     def _finds(self, which, idx, searchers: int, mass: float) -> float:
-        if self.n_unfound == 0 or mass <= 0:
+        n = self.believed_unfound
+        if n <= 0 or mass <= 0:
             return 0.0
-        return self.n_unfound * min(1.0, self._top_of(which, idx, searchers * self.T / self.tau) / mass)
+        return n * min(1.0, self._top_of(which, idx, searchers * self.T / self.tau) / mass)
 
     def _members(self, gid: int | None) -> list[CDrone]:
         return [d for d in self.drones if self.drone_group[d.id] == gid]
@@ -341,7 +351,14 @@ class PeakGroupModel(ContinuousModel):
             move = {q: self.peak_remaining(q) /
                     (_dist(pos, self._peak_xy[q]) * self.move_time + self._cells_left(q) * self.tau / half)
                     for q in cands}
-            if max(move.values()) <= self._rate_in_basin(g.peak, pos):
+            if self.split_rule == "cell":
+                stay = self._rate_in_basin(g.peak, pos)
+            else:
+                left = self._cells_left(g.peak)
+                stay = 0.0 if left == 0 else self.peak_remaining(g.peak) / (
+                    _dist(pos, self._peak_xy[g.peak]) * self.move_time
+                    + left * self.tau / max(1, len(present)))
+            if max(move.values()) <= stay:
                 continue
             ranked = sorted(cands, key=lambda q: (-self.peak_remaining(q) /
                                                   max(_dist(pos, self._peak_xy[q]), 0.5), q))
@@ -461,7 +478,7 @@ class PeakGroupModel(ContinuousModel):
             r, S, E = self._balance(H, F, U, busy, len(g_free), g_empty,
                                     lambda s: self._finds(("basin", g.peak), idx, s, mass))
             returners += g_empty[:r]
-            self.decisions.append(Decision(t, self.n_unfound, 0.0, E, H, F, U, S, r, f"group {g.id}"))
+            self.decisions.append(Decision(t, round(self.believed_unfound), 0.0, E, H, F, U, S, r, f"group {g.id}"))
 
         scav = self._members(None)
         s_free = [d for d in free if self.drone_group[d.id] is None]
@@ -475,7 +492,7 @@ class PeakGroupModel(ContinuousModel):
             r, S, E = self._balance(H, F, U, busy, len(s_free), s_empty,
                                     lambda s: self._finds(("free",), idx, s, mass))
             returners += s_empty[:r]
-            self.decisions.append(Decision(t, self.n_unfound, 0.0, E, H, F, U, S, r, "scavengers"))
+            self.decisions.append(Decision(t, round(self.believed_unfound), 0.0, E, H, F, U, S, r, "scavengers"))
         return returners
 
     @staticmethod
@@ -562,25 +579,16 @@ class PeakGroupModel(ContinuousModel):
                 fail(f"peak {pid} claimed by group {gid}, which holds peak {active[gid].peak}")
 
 
-def _variant(size: str, rejoin: str) -> type[PeakGroupModel]:
-    return type(f"Peaks{size.title()}{rejoin.title()}", (PeakGroupModel,), {
-        "name": f"peaks {size}/{rejoin}", "size_strategy": size, "rejoin": rejoin,
-        "__module__": __name__, "__doc__": f"Peak groups: {size} sizes, rejoin {rejoin}."})
+class PeaksBest(PeakGroupModel):
+    """The best-performing peak-group settings so far (shown in the demo)."""
+    name = "peak groups (best)"
+    rule = "reserve scavengers, runners rejoin as scavengers, groups split by basin rate"
+    size_strategy = "reserve"
+    rejoin = "scavengers"
+    split_rule = "basin"
 
 
-# module-level classes so benchmark.py's process pool can pickle them
-PeaksFixedGroup = _variant("fixed", "group")
-PeaksFixedScavengers = _variant("fixed", "scavengers")
-PeaksMassGroup = _variant("mass", "group")
-PeaksMassScavengers = _variant("mass", "scavengers")
-PeaksReserveGroup = _variant("reserve", "group")
-PeaksReserveScavengers = _variant("reserve", "scavengers")
+# register with the simulator's algorithm table (see the end of continuous_model.py)
+from continuous_model import CONTINUOUS_ALGORITHMS  # noqa: E402
 
-PEAK_ALGORITHMS = {
-    "peaks-fixed-group": PeaksFixedGroup,
-    "peaks-fixed-scavengers": PeaksFixedScavengers,
-    "peaks-mass-group": PeaksMassGroup,
-    "peaks-mass-scavengers": PeaksMassScavengers,
-    "peaks-reserve-group": PeaksReserveGroup,
-    "peaks-reserve-scavengers": PeaksReserveScavengers,
-}
+CONTINUOUS_ALGORITHMS["peaks-best"] = PeaksBest

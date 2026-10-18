@@ -5,7 +5,7 @@ import pytest
 from benchmark import BenchmarkConfig, mean_ci, run_benchmark, summarize_rows
 from continuous_model import (CONTINUOUS_ALGORITHMS, ContinuousModel, SimulationInvariantError)
 from metrics import STATUSES, curves, summarize
-from scenario import Scenario
+from scenario import Scenario, draw_people
 
 SC = Scenario(campus="square")   # the real map has its own tests in test_campus_map.py
 
@@ -87,8 +87,11 @@ def test_metrics_are_consistent(key):
     model.run()
     m = summarize(model)
     c = curves(model)
-    assert m["completion"] == pytest.approx(max(c["supplied"]))
+    assert m["all_served"] == pytest.approx(max(c["supplied"]))
     assert m["all_found"] == pytest.approx(max(c["found"]))
+    # completion: the ceil(0.8 * expected)-th person served (expected = the true count here)
+    assert m["completion"] == pytest.approx(c["supplied"][math.ceil(0.8 * len(model.people)) - 1])
+    assert m["completion"] <= m["all_served"] and m["all_found"] <= m["all_served"]
     assert m["mean_wait"] <= m["p90_wait"] <= m["max_wait"]
     assert sum(m[f"share_{s}"] for s in STATUSES) == pytest.approx(1.0)
     # every drone's time adds up to the run length
@@ -122,7 +125,9 @@ def test_dashboard_api_returns_replay_data():
                                "check": True})
     assert set(out["results"]) == {"expected", "brute"}
     rep = out["results"]["expected"]["replay"]
-    assert len(rep["people"]) == 15
+    # 15 is the expected head count; the run draws its own (seed 0), the same for every algorithm
+    assert out["expected_people"] == 15 and out["people"] == draw_people(15, 0)
+    assert len(rep["people"]) == out["people"] == len(out["results"]["brute"]["replay"]["people"])
     sc = Scenario()
     assert len(rep["cells"]) == sc.n_search_cells
     assert (out["scenario"]["map"] is not None) == sc.uses_map
@@ -269,3 +274,49 @@ def test_benchmark_csv_keeps_columns_only_some_models_have(tmp_path):
     write_csv(rows, str(path))
     lines = path.read_text().splitlines()
     assert lines[0] == "algo,completion,splits" and lines[1].endswith(",")
+
+
+# ---------------------------------------- random head count, 80% completion
+
+def test_people_draw_is_seeded_normal_with_a_floor():
+    from metrics import COMPLETION_FRAC
+    from scenario import PEOPLE_FLOOR_FRAC, PEOPLE_SD_FRAC
+
+    draws = [draw_people(250, s) for s in range(4000)]
+    assert draws == [draw_people(250, s) for s in range(4000)]
+    assert min(draws) >= COMPLETION_FRAC * 250
+    assert round(PEOPLE_FLOOR_FRAC * 250) in draws          # low draws are raised to 85%
+    kept = [d for d in draws if d != round(PEOPLE_FLOOR_FRAC * 250)]
+    assert abs(sum(draws) / len(draws) - 250) < 2
+    sd = (sum((d - 250) ** 2 for d in kept) / len(kept)) ** 0.5
+    assert 0.8 * PEOPLE_SD_FRAC * 250 < sd < 1.1 * PEOPLE_SD_FRAC * 250
+
+
+def test_planner_uses_the_expected_count_not_the_true_one():
+    a = uw(ContinuousModel, p=40)
+    b = uw(ContinuousModel, p=40, expected_people=80)
+    assert a.believed_unfound == 40 and b.believed_unfound == 80
+    assert b.expected_finds(10, a.remaining_area()) == pytest.approx(
+        2 * a.expected_finds(10, a.remaining_area()))
+    c = uw(ContinuousModel, p=40, expected_people=30)
+    for person in c.people[:35]:            # found more than expected: nothing left to plan for
+        person.found_step = 0.0
+    c.n_unfound = 5
+    assert c.believed_unfound == 0 and c.expected_finds(10, c.remaining_area()) == 0
+
+
+def test_completion_counts_people_served_against_the_expected_count():
+    model = uw(ContinuousModel, p=40, expected_people=30, seed=2)
+    model.run()
+    served = curves(model)["supplied"]
+    assert summarize(model)["completion"] == pytest.approx(served[24 - 1])   # ceil(0.8 * 30)
+    assert summarize(model)["n_people"] == 40
+
+
+def test_benchmark_runs_share_each_seeds_head_count():
+    cfg = BenchmarkConfig(drones=[6], people=[30], runs=3, algos=["expected", "brute"],
+                          baseline="brute", campus="square")
+    rows = run_benchmark(cfg, workers=1)
+    for seed in range(3):
+        counts = {r["n_people"] for r in rows if r["seed"] == seed}
+        assert counts == {draw_people(30, seed)}

@@ -11,14 +11,14 @@ python campus_map.py fetch            # one-off: real UW campus from OpenStreetM
 python server.py                      # dashboard at http://localhost:8000
 python benchmark.py --drones 10 20 50 --people 60 250 --runs 30 --csv runs.csv
 python scenario.py -n 20 -p 60        # quick comparison table
-python continuous_viz.py -n 20 -p 60 --algo expected keep brute   # matplotlib replay
+python continuous_viz.py -n 20 -p 60 --algo expected peaks-best brute   # matplotlib replay
 pytest
 ```
 
 | File | What it is |
 |---|---|
-| `continuous_model.py` | Event-driven simulator and the algorithms (`expected`, `expected-uniform`, `keep`, `brute`, `greedy-density`) |
-| `peaks_model.py` | Peak-group search: groups work density peaks, scavengers take the rest (`peaks-*`) |
+| `continuous_model.py` | Event-driven simulator and the algorithms (`expected`, `brute`) |
+| `peaks_model.py` | Peak-group search: groups work density peaks, scavengers take the rest (`peaks-best`) |
 | `scenario.py` | UW scenario: depot distances, drone speeds; real map or square approximation |
 | `campus_map.py` | Downloads the UW boundary and building footprints from OpenStreetMap and rasterises them |
 | `density.py`, `data/building_visitors.csv` | Prior density surface of where people are (the searcher's belief), its peaks and basins |
@@ -43,6 +43,23 @@ approximation.
 
 Map data © OpenStreetMap contributors, available under the
 [Open Database License](https://www.openstreetmap.org/copyright).
+
+## Staging areas and the demo
+
+Besides Redmond and Bothell, `--depot` (and the dashboard's Depot menu) can put the
+supplies on or next to campus: `rainier_vista`, `hub_yard`, `denny_yard`,
+`parrington_lawn` are campus Mass Assembly Areas that UW EH&S lists for staging relief
+supplies, and `uw_tower` is beside the Emergency Operations Center just west of campus.
+Positions are approximate (about 50 m). An on-campus depot is its own exit, so a depot
+run is the flight across campus plus the 5 min restock; these depots need the real map.
+
+The dashboard has two demo buttons. **Staged on campus** runs 20 drones / 60
+expected people with supplies at Rainier Vista; **Flown from Redmond** runs 10 drones /
+250 expected people with supplies from Redmond. Each replays its own depot and compares
+Redmond with Rainier Vista over 8 seeds for `expected`, `peaks-best` and find-then-fetch,
+leading with mean and longest wait. (Presets: `DEMOS` in `server.py`.)
+`peaks-best` is the best peak-group setting so far (reserve sizes, runners rejoin as
+scavengers, `split_rule=basin`).
 
 ## Density surface
 
@@ -88,17 +105,30 @@ itself, so it is exactly right.
 | Algorithm | What it does |
 |---|---|
 | `expected` | depot runs balance \|H + F + r − (U + E)\|; drones search the nearest unclaimed cell |
-| `expected-uniform` | the same with the old uniform E, for reference |
-| `keep` | expected value, but nobody returns while the fleet can finish searching within a trip |
+| `peaks-best` | peak groups (below) with the best settings found: reserve sizes, runners rejoin as scavengers, `split_rule=basin` |
 | `brute` | find-then-fetch: fetch only for people already found |
-| `greedy-density` | each free drone takes the cell with the best prob / (travel + tau); expected-value depot runs |
-| `peaks-<size>-<rejoin>` | peak groups (below); size `fixed`, `mass` or `reserve`, rejoin `group` or `scavengers` |
+
+These are the only registered algorithms. The keep-searching, uniform-E and
+greedy-density classes (`ContinuousKeepSearching`, `ContinuousExpectedUniform`,
+`ContinuousGreedyDensity`) stay in `continuous_model.py` for reference and tests.
 
 ```bash
 python benchmark.py --drones 10 20 50 --people 60 250 --runs 30 \
-    --algos expected greedy-density "expected:search_en_route=False" \
-    --baseline expected --compare-to greedy-density --placement density
+    --algos expected peaks-best "expected:search_en_route=False" \
+    --baseline brute --compare-to expected --placement density
 ```
+
+### People and completion
+
+`--people` (and the dashboard's Expected people) is the **expected** number of
+people needing aid. Each seed draws its own count from a normal distribution
+around it (SD 10% of the mean); a draw below 80% of the mean is raised to 85%.
+Every algorithm and depot sees the same draw for a seed, and the planners only
+know the mean: E uses (expected people − people found so far).
+
+**Completion** is the time 80% of the expected number of people have been
+served, i.e. found and given a kit (`metrics.COMPLETION_FRAC`). The time everyone is served is reported
+separately as `all_served`.
 
 ## Peak-group search (`peaks_model.py`)
 
@@ -120,12 +150,14 @@ balance.
 | size strategy | `fixed`: groups of 10, leftovers scavenge · `mass`: all drones shared by peak mass (≥ 2 each) · `reserve`: `scavenger_share` (0.3) scavenge, the rest by mass |
 | rejoin | `group`: back to the group after a depot run (the smaller half if it split, scavenger if it dissolved) · `scavengers`: depot runners become scavengers |
 | `k_frac` | exhaustion threshold relative to the largest peak (default 0.10) |
+| `split_rule` | `cell` (spec default): best single in-basin cell rate vs moving half the group, which at t = 0 almost always splits at once · `basin`: the group's rate on its own basin vs half the group on the neighbour |
 
 Every split, move and dissolve is in `model.group_log`; the replay log and both
-viewers colour drones by group (grey = scavenger). Variants with options:
+viewers colour drones by group (grey = scavenger). Other settings run as
+options on `peaks-best`:
 
 ```bash
 python benchmark.py --drones 20 --people 250 --runs 30 \
-    --algos peaks-mass-group "peaks-mass-group:k_frac=0.05" greedy-density \
-    --baseline expected --compare-to greedy-density
+    --algos peaks-best "peaks-best:k_frac=0.2" "peaks-best:size_strategy=mass,rejoin=group" \
+    --baseline expected
 ```
