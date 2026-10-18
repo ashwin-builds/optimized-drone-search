@@ -28,7 +28,8 @@ from pathlib import Path
 from benchmark import BenchmarkConfig, run_benchmark, summarize_rows
 from continuous_model import CONTINUOUS_ALGORITHMS, STATUSES
 from metrics import METRICS, curves, summarize
-from scenario import DEPOT_DISTANCE_KM, Scenario
+from campus_map import DATA_PATH
+from scenario import CAMPUS_CHOICES, DEPOT_DISTANCE_KM, Scenario
 
 WEB_DIR = Path(__file__).parent / "web"
 MAX_RUN_PEOPLE = 5000
@@ -41,17 +42,29 @@ def _r(x: float, nd: int = 3) -> float:
 
 
 def _scenario(params: dict) -> Scenario:
-    return Scenario(depot=params.get("depot", "redmond"),
+    campus = params.get("campus", "auto")
+    if campus not in CAMPUS_CHOICES:
+        raise ValueError(f"campus must be one of {CAMPUS_CHOICES}")
+    return Scenario(depot=params.get("depot", "redmond"), campus=campus,
                     cell_side_target_m=float(params.get("cell_side", 25.0)))
 
 
 def scenario_info(sc: Scenario) -> dict:
-    return {
-        "k": sc.k, "cell_side_m": sc.cell_side_m, "area_km2": sc.k ** 2 * sc.cell_area_km2,
+    info = {
+        "k": sc.k, "cell_side_m": sc.cell_side_m,
+        "area_km2": sc.n_search_cells * sc.cell_area_km2,
         "depot": sc.depot, "distance_km": sc.distance_km, "depot_point": sc.depot_point,
         "search_time_min": sc.search_time_min, "trip_time_min": sc.trip_time_min,
-        "move_time_min": sc.move_time_min,
+        "move_time_min": sc.move_time_min, "map": None,
     }
+    if sc.uses_map:
+        cmap, grid = sc.map_grid
+        mask = ["".join("1" if (x, y) in grid.search_cells else "0" for x in range(grid.k))
+                for y in range(grid.k)]
+        info["map"] = {"fetched": cmap.fetched, "source": cmap.source,
+                       "n_buildings": len(cmap.buildings), "indoor_fraction": sc.indoor_fraction,
+                       "mask": mask, **cmap.outline_cells(sc.cell_side_m)}
+    return info
 
 
 def run_scenario(params: dict) -> dict:
@@ -103,6 +116,7 @@ def start_benchmark(params: dict) -> str:
         baseline=params.get("baseline", "brute"),
         depot=params.get("depot", "redmond"),
         cell_side=float(params.get("cell_side", 25.0)),
+        campus=_scenario(params).campus,
         check=bool(params.get("check")),
     )
     if cfg.baseline not in cfg.algos:
@@ -157,6 +171,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "depots": {k: v for k, v in DEPOT_DISTANCE_KM.items()},
                 "metrics": METRICS,
                 "statuses": STATUSES,
+                "map_available": DATA_PATH.exists(),
             })
         if self.path.startswith("/api/benchmark/"):
             job_id = self.path.rsplit("/", 1)[1]

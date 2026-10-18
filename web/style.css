@@ -15,6 +15,8 @@
   --critical: #d03b3b;
   --cell-unsearched: #d6d5cf;
   --cell-searched: #fcfcfb;
+  --cell-offcampus: #ecebe7;
+  --building-line: #8f8e86;
   --depot-strip: #f6efe6;
   --accent: #2a78d6;
 }
@@ -33,6 +35,8 @@
     --series-3: #199e70;
     --cell-unsearched: #3a3a36;
     --cell-searched: #1f1f1d;
+    --cell-offcampus: #141413;
+    --building-line: #6b6a64;
     --depot-strip: #2a2620;
     --accent: #3987e5;
   }
@@ -51,6 +55,8 @@
   --series-3: #199e70;
   --cell-unsearched: #3a3a36;
   --cell-searched: #1f1f1d;
+  --cell-offcampus: #141413;
+  --building-line: #6b6a64;
   --depot-strip: #2a2620;
   --accent: #3987e5;
 }

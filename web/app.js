@@ -133,7 +133,7 @@ async function onRun(event) {
   try {
     const t0 = performance.now();
     const data = await api("/api/run", {
-      drones: +params.drones, people: +params.people, depot: params.depot,
+      drones: +params.drones, people: +params.people, depot: params.depot, campus: params.campus,
       cell_side: +params.cell_side, seed: +params.seed, algos: params.algos, check: params.check,
     });
     state.run = data;
@@ -157,8 +157,14 @@ function setStatus(sel, text, error = false) {
 
 function renderRun() {
   const { scenario: sc, results } = state.run;
+  const m = sc.map;
+  $("#map-note").textContent = m
+    ? `Real UW campus: ${m.n_buildings} buildings, ${Math.round(m.indoor_fraction * 100)}% of people indoors ` +
+      `(placed by floor area). Map data ${m.source.replace(" - https://www.openstreetmap.org/copyright", "")}, ` +
+      `fetched ${m.fetched}.`
+    : "Square approximation of the campus. Run `python campus_map.py fetch` to use the real UW map.";
   $("#scenario-info").textContent =
-    `${sc.k}×${sc.k} cells of ${sc.cell_side_m.toFixed(1)} m (${sc.area_km2.toFixed(2)} km²) · ` +
+    `${sc.k}×${sc.k} grid of ${sc.cell_side_m.toFixed(1)} m cells, ${sc.area_km2.toFixed(2)} km² searched · ` +
     `${(sc.search_time_min * 60).toFixed(1)} s to search a cell · ` +
     `${sc.trip_time_min.toFixed(1)} min depot round trip from the campus edge · ` +
     `${state.run.drones} drones, ${state.run.people} people, seed ${state.run.seed}`;
@@ -421,6 +427,7 @@ function drawReplays() {
   const t = state.t;
   const colors = {
     un: hexToRgb(css("--cell-unsearched")), se: hexToRgb(css("--cell-searched")),
+    off: hexToRgb(css("--cell-offcampus")), building: css("--building-line"),
     ink: css("--text-primary"), muted: css("--text-muted"), strip: css("--depot-strip"),
     waiting: css("--critical"), enroute: css("--warning"), served: css("--good"),
     secondary: css("--text-secondary"),
@@ -440,8 +447,11 @@ function drawReplays() {
     const gctx = g.getContext("2d");
     const img = gctx.createImageData(k, k);
     const px = img.data;
+    const mask = sc.map ? sc.map.mask : null;
     for (let i = 0; i < k * k; i++) {
-      px[4 * i] = colors.un[0]; px[4 * i + 1] = colors.un[1]; px[4 * i + 2] = colors.un[2]; px[4 * i + 3] = 255;
+      const off = mask && mask[k - 1 - Math.floor(i / k)][i % k] === "0";
+      const c = off ? colors.off : colors.un;
+      px[4 * i] = c[0]; px[4 * i + 1] = c[1]; px[4 * i + 2] = c[2]; px[4 * i + 3] = 255;
     }
     for (const [cx, cy, a, b] of rep.cells) {
       if (t <= a) continue;
@@ -453,6 +463,7 @@ function drawReplays() {
     ctx.clearRect(0, 0, W, W + rep.strip + 8);
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(g, 0, 0, W, W);
+    if (sc.map) drawOutlines(ctx, sc.map, X, Y, colors);
 
     // depot exit point
     const [dx, dy] = sc.depot_point;
@@ -556,6 +567,20 @@ function drawReplays() {
   }
 }
 
+function drawOutlines(ctx, map, X, Y, colors) {
+  const path = (ring) => {
+    ctx.beginPath();
+    ring.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))));
+    ctx.closePath();
+  };
+  ctx.lineWidth = 0.8;
+  ctx.strokeStyle = colors.building;
+  for (const ring of map.buildings) { path(ring); ctx.stroke(); }
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = colors.secondary;
+  for (const ring of map.campus) { path(ring); ctx.stroke(); }
+}
+
 function drawTriangle(ctx, x, y, s, filled, ink) {
   ctx.beginPath();
   ctx.moveTo(x, y - s * 0.6);
@@ -602,6 +627,7 @@ function buildLegend() {
     ["Found, drone on the way", (c) => dot(c, css("--warning"))],
     ["Served", (c) => dot(c, css("--good"))],
     ["Campus exit toward the depot", (c) => { c.fillStyle = css("--text-secondary"); c.fillRect(3, 3, 10, 10); }],
+    ["Building outline (real map)", (c) => { c.strokeStyle = css("--building-line"); c.lineWidth = 1; c.strokeRect(3, 3, 10, 10); }],
   ];
   function dot(c, color) { c.fillStyle = color; c.beginPath(); c.arc(8, 8, 4, 0, 7); c.fill(); }
   const ul = $("#replay-legend");
@@ -639,6 +665,7 @@ async function onBench(event) {
   try {
     const { job } = await api("/api/benchmark", {
       drones, people, runs: +params.runs, depot: params.depot, cell_side: +params.cell_side,
+      campus: params.campus,
       algos: params.algos, baseline: params.baseline, check: params.check,
     });
     const started = performance.now();

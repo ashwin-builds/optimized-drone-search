@@ -25,7 +25,7 @@ from dataclasses import asdict, dataclass, field
 
 from continuous_model import CONTINUOUS_ALGORITHMS
 from metrics import summarize
-from scenario import DEPOT_DISTANCE_KM, Scenario
+from scenario import CAMPUS_CHOICES, DEPOT_DISTANCE_KM, Scenario
 
 # two-sided 95% Student t critical values by degrees of freedom
 _T95 = [(1, 12.706), (2, 4.303), (3, 3.182), (4, 2.776), (5, 2.571), (6, 2.447), (7, 2.365),
@@ -63,18 +63,19 @@ class BenchmarkConfig:
     baseline: str = "brute"
     depot: str = "redmond"
     cell_side: float = 25.0
+    campus: str = "auto"
     check: bool = False
 
     def jobs(self) -> list[tuple]:
-        return [(algo, n, p, seed, self.depot, self.cell_side, self.check)
+        return [(algo, n, p, seed, self.depot, self.cell_side, self.campus, self.check)
                 for n in self.drones for p in self.people
                 for seed in range(self.seed, self.seed + self.runs)
                 for algo in self.algos]
 
 
 def run_one(job: tuple) -> dict:
-    algo, n, p, seed, depot, cell_side, check = job
-    sc = Scenario(depot=depot, cell_side_target_m=cell_side)
+    algo, n, p, seed, depot, cell_side, campus, check = job
+    sc = Scenario(depot=depot, cell_side_target_m=cell_side, campus=campus)
     model = CONTINUOUS_ALGORITHMS[algo](n, n_people=p, seed=seed, check=check,
                                         **sc.model_kwargs())
     model.run()
@@ -164,6 +165,8 @@ def main():
     parser.add_argument("--baseline", choices=sorted(CONTINUOUS_ALGORITHMS), default="brute")
     parser.add_argument("--depot", choices=sorted(DEPOT_DISTANCE_KM), default="redmond")
     parser.add_argument("--cell-side", type=float, default=25.0)
+    parser.add_argument("--campus", choices=CAMPUS_CHOICES, default="auto",
+                        help="real UW map, square approximation, or auto (map if downloaded)")
     parser.add_argument("--check", action="store_true", help="run built-in invariant checks")
     parser.add_argument("--workers", type=int, default=None, help="processes (default: all cores)")
     parser.add_argument("--csv", help="write one row per run to this file")
@@ -172,8 +175,9 @@ def main():
     algos = args.algos if args.baseline in args.algos else args.algos + [args.baseline]
     cfg = BenchmarkConfig(drones=args.drones, people=args.people, runs=args.runs, seed=args.seed,
                           algos=algos, baseline=args.baseline, depot=args.depot,
-                          cell_side=args.cell_side, check=args.check)
-    print(Scenario(depot=cfg.depot, cell_side_target_m=cfg.cell_side).describe())
+                          cell_side=args.cell_side, campus=args.campus, check=args.check)
+    print(Scenario(depot=cfg.depot, cell_side_target_m=cfg.cell_side,
+                   campus=cfg.campus).describe())
     total = len(cfg.jobs())
 
     def progress(done, total):

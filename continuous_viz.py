@@ -25,11 +25,12 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.lines import Line2D
 
 from continuous_model import CONTINUOUS_ALGORITHMS, ContinuousModel, Decision
-from scenario import DEPOT_DISTANCE_KM, Scenario
+from scenario import CAMPUS_CHOICES, DEPOT_DISTANCE_KM, Scenario
 from visualize import EMPTY, HIDDEN, LOADED, SUPPLIED, WAITING, show_or_save, spread
 
 ASSIGNED = "#9467bd"    # found, a drone is flying to them
 CELL_CMAP = LinearSegmentedColormap.from_list("search", ["#d0d0d0", "#fbfbf6"])
+CELL_CMAP.set_bad("#ecebe7")  # off campus (real map)
 
 
 @dataclass
@@ -52,6 +53,10 @@ class CSnapshot:
 def snapshot(model: ContinuousModel, t: float) -> CSnapshot:
     k = model.k
     cells = np.zeros((k, k))
+    if model.search_cells is not None:
+        cells[:] = np.nan
+        for x, y in model.search_cells:
+            cells[y, x] = 0.0
     for x, y in model.searched:
         cells[y, x] = 1.0
     drones, flights = [], []
@@ -188,8 +193,17 @@ class ContinuousPanel:
         ax_grid.set_xticks([])
         ax_grid.set_yticks([])
         ax_grid.set_aspect("equal")
-        ax_grid.set_xlabel(f"UW Seattle campus (simplified), {k}x{k} cells of "
-                           f"{sc.cell_side_m:.1f} m", fontsize=8.5)
+        if sc.uses_map:
+            from matplotlib.collections import PolyCollection
+            outlines = sc.map_grid[0].outline_cells(sc.cell_side_m)
+            shift = lambda rings: [[(x - 0.5, y - 0.5) for x, y in r] for r in rings]
+            ax_grid.add_collection(PolyCollection(shift(outlines["buildings"]), facecolors="none",
+                                                  edgecolors="#8f8e86", linewidths=0.4, zorder=2))
+            ax_grid.add_collection(PolyCollection(shift(outlines["campus"]), facecolors="none",
+                                                  edgecolors="#52514e", linewidths=1.0, zorder=2))
+        label = ("UW Seattle campus (OpenStreetMap)" if sc.uses_map
+                 else "UW Seattle campus (square approximation)")
+        ax_grid.set_xlabel(f"{label}, {sc.cell_side_m:.1f} m cells", fontsize=8.5)
 
         pos = ax_grid.get_position()
         fig_w, fig_h = fig.get_size_inches()
@@ -307,6 +321,8 @@ def main():
     parser.add_argument("--aid-fraction", type=float, default=0.005)
     parser.add_argument("--cell-side", type=float, default=25.0,
                         help="target cell side in metres (default 25)")
+    parser.add_argument("--campus", choices=CAMPUS_CHOICES, default="auto",
+                        help="real UW map, square approximation, or auto (map if downloaded)")
     parser.add_argument("--algo", nargs="+", choices=sorted(CONTINUOUS_ALGORITHMS) + ["both"],
                         default=["expected"],
                         help="one or more algorithms to show side by side; "
@@ -322,7 +338,7 @@ def main():
     args = parser.parse_args()
 
     sc = Scenario(depot=args.depot, aid_fraction=args.aid_fraction,
-                  cell_side_target_m=args.cell_side)
+                  cell_side_target_m=args.cell_side, campus=args.campus)
     p = sc.people if args.p is None else args.p
     keys = []
     for key in args.algo:

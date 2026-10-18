@@ -139,6 +139,7 @@ class ContinuousModel(DroneSearchModel):
                  spot_at_end: bool = False, entry_cell: tuple[int, int] = (0, 0),
                  move_time_per_cell: float | None = None,
                  depot_point: tuple[float, float] | None = None,
+                 search_cells=None, people_layout=None,
                  record: bool = False, check: bool = False, seed: int | None = None):
         super().__init__(n_drones, grid_size, n_people, cell_area=cell_area,
                          start_with_supplies=start_with_supplies,
@@ -153,10 +154,26 @@ class ContinuousModel(DroneSearchModel):
         self.record = record
         self.check = check
 
+        # a real map: only campus cells are searched, people placed by the layout
+        self.search_cells = None if search_cells is None else frozenset(search_cells)
+        if self.search_cells is not None:
+            self.unsearched = set(self.search_cells)
         layout = random.Random(None if seed is None else f"layout:{seed}")
-        for person in self.people:
-            person.xy = (person.cell[0] + layout.random(), person.cell[1] + layout.random())
-            person.spot_frac = layout.random()
+        if people_layout is None:
+            for person in self.people:
+                person.xy = (person.cell[0] + layout.random(), person.cell[1] + layout.random())
+                person.spot_frac = layout.random()
+        else:
+            self.people_in_cell = {}
+            for person, xy in zip(self.people, people_layout(layout, len(self.people))):
+                person.xy = xy
+                person.cell = (int(xy[0]), int(xy[1]))
+                self.people_in_cell.setdefault(person.cell, []).append(person)
+            for person in self.people:
+                person.spot_frac = layout.random()
+        if self.search_cells is not None and any(p.cell not in self.search_cells
+                                                 for p in self.people):
+            raise ValueError("people_layout put someone outside the search area")
 
         start = depot_point if depot_point is not None else _center(entry_cell)
         self.drones = [CDrone(d.id, self._cell_of(start), d.has_supplies, loc=start)

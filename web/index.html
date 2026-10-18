@@ -26,6 +26,11 @@
       <label>Drones <input name="drones" type="number" min="1" max="500" value="20"></label>
       <label>People <input name="people" type="number" min="0" max="5000" value="60"></label>
       <label>Depot <select name="depot"></select></label>
+<label>Map <select name="campus">
+        <option value="auto" selected>Real UW campus if downloaded</option>
+        <option value="uw">Real UW campus</option>
+        <option value="square">Square approximation</option>
+      </select></label>
       <label>Cell size (m) <input name="cell_side" type="number" min="5" max="200" step="1" value="25"></label>
       <label>Seed <input name="seed" type="number" min="0" value="0"></label>
       <fieldset class="algos" data-role="algos"><legend>Algorithms</legend></fieldset>
@@ -34,6 +39,7 @@
     </form>
     <p id="run-status" class="status" role="status"></p>
     <p id="scenario-info" class="info"></p>
+    <p id="map-note" class="info"></p>
 
     <div id="run-output" hidden>
       <div class="card">
@@ -91,6 +97,11 @@
       <label>People <input name="people" value="60 250" title="space-separated list"></label>
       <label>Seeds per setting <input name="runs" type="number" min="1" max="1000" value="20"></label>
       <label>Depot <select name="depot"></select></label>
+<label>Map <select name="campus">
+        <option value="auto" selected>Real UW campus if downloaded</option>
+        <option value="uw">Real UW campus</option>
+        <option value="square">Square approximation</option>
+      </select></label>
       <label>Cell size (m) <input name="cell_side" type="number" min="5" max="200" value="25"></label>
       <fieldset class="algos" data-role="algos"><legend>Algorithms</legend></fieldset>
       <label>Compare against <select name="baseline"></select></label>
