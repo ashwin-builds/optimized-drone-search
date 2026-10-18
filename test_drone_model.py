@@ -37,3 +37,18 @@ def test_no_supplies_start_sends_drones_back_when_people_are_dense():
     model = DroneSearchModel(4, 4, 16, start_with_supplies=False, seed=0)
     r, s = model.choose_num_returning()
     assert (r, s) == (2, 2)
+
+
+def test_surplus_drones_loaded_search_empty_return():
+    model = DroneSearchModel(6, 4, 5, seed=0)
+    model.unsearched = set(list(model.unsearched)[:3])  # 6 drones, 3 cells
+    for d in model.drones[:2]:
+        d.has_supplies = True
+    for d in model.drones[2:]:
+        d.has_supplies = False
+    # 2 loaded + 1 empty search the 3 cells, the other 3 empty drones return
+    assert model.choose_num_returning() == (3, 3)
+    for d in model.drones[:4]:
+        d.has_supplies = True
+    # 4 loaded > 3 cells: 3 loaded search, 1 loaded idles, both empty return
+    assert model.choose_num_returning() == (2, 3)

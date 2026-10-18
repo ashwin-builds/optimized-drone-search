@@ -22,11 +22,16 @@ balance supply against expected demand:
     lambda = expected people found per searching drone = A * n / R
              (n = unfound people, R = unsearched area)
     U      = found people still waiting for supplies
+
+When there are more drones than unsearched cells, the balance is skipped:
+loaded drones take the cells first, empty drones fill any cells left over, and
+every remaining empty drone heads back for supplies.
 """
 
 from __future__ import annotations
 
 import random
+from collections import deque
 from dataclasses import dataclass, field
 
 
@@ -93,7 +98,9 @@ class DroneSearchModel:
         self.unsearched: set[tuple[int, int]] = {
             (x, y) for x in range(grid_size) for y in range(grid_size)
         }
-        self.waiting: list[Person] = []  # found, not yet supplied (FIFO)
+        self.waiting: deque[Person] = deque()  # found, not yet supplied (FIFO)
+        self.n_unfound = n_people
+        self.n_supplied = 0
         self.drones = [
             Drone(i, entry_cell, start_with_supplies) for i in range(n_drones)
         ]
@@ -101,16 +108,12 @@ class DroneSearchModel:
     # ------------------------------------------------------------------ state
 
     @property
-    def n_unfound(self) -> int:
-        return sum(p.found_step is None for p in self.people)
-
-    @property
     def remaining_area(self) -> float:
         return len(self.unsearched) * self.A
 
     @property
     def done(self) -> bool:
-        return all(p.supplied_step is not None for p in self.people)
+        return self.n_supplied == len(self.people)
 
     def expected_finds_per_drone(self) -> float:
         """lambda = A * n / R: expected people one drone finds searching one cell."""
@@ -124,6 +127,8 @@ class DroneSearchModel:
         """Pick (r, S) minimising |H + r - (S * lambda + U)|.
 
         Only empty drones may return. Ties go to the smaller r (keep searching).
+        With more drones than unsearched cells, every cell gets a searcher
+        (loaded drones first) and all leftover empty drones return.
         """
         n = len(self.drones)
         carrying = sum(d.has_supplies for d in self.drones)
@@ -131,6 +136,10 @@ class DroneSearchModel:
         lam = self.expected_finds_per_drone()
         waiting = len(self.waiting)
         cells = len(self.unsearched)
+
+        if n > cells:
+            empty_searchers = max(0, cells - carrying)
+            return empty - empty_searchers, cells
 
         best = None
         for r in range(empty + 1):
@@ -143,21 +152,27 @@ class DroneSearchModel:
 
     # ------------------------------------------------------------- movement
 
-    def _pick_cell(self, drone: Drone, claimed: set[tuple[int, int]]):
-        """An unclaimed unsearched cell adjacent to the drone, else the nearest one."""
-        x, y = drone.pos
-        adjacent = [
-            c for c in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1), (x, y))
-            if c in self.unsearched and c not in claimed
-        ]
-        if adjacent:
-            return self.rng.choice(adjacent)
-        candidates = self.unsearched - claimed
-        if not candidates:
+    def _pick_cell(self, drone: Drone):
+        """The nearest unsearched cell, scanning outward one Manhattan ring at a time.
+
+        Ring 1 is the four neighbours, ring 2 the neighbours' neighbours, and so
+        on; ties within a ring are broken at random. Cells are removed from
+        self.unsearched as soon as they are picked, so no two drones can pick
+        the same cell in a step.
+        """
+        if not self.unsearched:
             return None
-        best_d = min(abs(cx - x) + abs(cy - y) for cx, cy in candidates)
-        nearest = [c for c in candidates if abs(c[0] - x) + abs(c[1] - y) == best_d]
-        return self.rng.choice(nearest)
+        x, y = drone.pos
+        for d in range(2 * self.k):
+            ring = []
+            for i in range(-d, d + 1):
+                j = d - abs(i)
+                for c in {(x + i, y + j), (x + i, y - j)}:
+                    if c in self.unsearched:
+                        ring.append(c)
+            if ring:
+                return self.rng.choice(ring)
+        return None
 
     # ------------------------------------------------------------------ step
 
@@ -177,19 +192,20 @@ class DroneSearchModel:
         searchers = field_drones[:s]
 
         # Search: no two drones search the same cell in a step.
-        claimed: set[tuple[int, int]] = set()
+        n_searched = 0
         found_now = 0
         for drone in searchers:
-            cell = self._pick_cell(drone, claimed)
+            cell = self._pick_cell(drone)
             if cell is None:
                 break
-            claimed.add(cell)
+            n_searched += 1
             drone.pos = cell
             self.unsearched.discard(cell)
             for person in self.people_in_cell.get(cell, []):
                 person.found_step = self.step_count
                 self.waiting.append(person)
                 found_now += 1
+        self.n_unfound -= found_now
 
         # Returners complete the round trip within this step and arrive loaded.
         for drone in returners:
@@ -202,20 +218,21 @@ class DroneSearchModel:
             if not self.waiting:
                 break
             if drone.has_supplies:
-                person = self.waiting.pop(0)
+                person = self.waiting.popleft()
                 person.supplied_step = self.step_count
                 person.supplied_by = drone.id
                 drone.has_supplies = False
                 supplied_now += 1
+        self.n_supplied += supplied_now
 
         record = StepRecord(
             step=self.step_count,
             lam=lam,
             carrying=carrying_before,
             waiting_before=waiting_before,
-            searching=len(claimed),
+            searching=n_searched,
             returning=r,
-            idle=len(self.drones) - len(claimed) - r,
+            idle=len(self.drones) - n_searched - r,
             found=found_now,
             supplied=supplied_now,
             unfound_after=self.n_unfound,
